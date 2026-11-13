@@ -25,7 +25,7 @@ const timerText = value => {
 const button = (text, action, data = {}, classes = '', disabled = false) => `<button class="${classes}" data-action="${action}" ${Object.entries(data).map(([k,v]) => `data-${k}="${esc(v)}"`).join(' ')} ${disabled ? 'disabled' : ''}>${text}</button>`;
 const link = (target, extra = {}) => {
   const p = new URLSearchParams({code, ...extra});
-  if (apiBase) p.set('server', apiBase);
+  if (apiBase && apiBase !== window.CONTEST_CONFIG?.apiBase) p.set('server', apiBase);
   return `${target}.html?${p}`;
 };
 const phaseClock = timer => `<div class="timer" data-clock-turn="${esc(state?.current?.id || state?.active || '')}" data-timer="${esc(JSON.stringify(timer))}">${timerText(remaining(timer))}</div>`;
@@ -174,7 +174,7 @@ function stage(cue, preview = false) {
   }
   if (c.scene === 'announcement') content = `<div class="stage-topic">${esc(c.message || 'Announcement')}</div>`;
   if (c.scene === 'closing') content = `<h1>${esc(c.message || 'Thank you for participating')}</h1><p class="stage-sub">${esc(settings.title)}</p>`;
-  if (['leaderboard','awards'].includes(c.scene)) content = `<h2>${c.scene==='awards'?'Awards':'Published results'}</h2>${c.results ? `<div class="stage-rows results">${c.results.map(r=>`<div><b>${r.rank}</b><b>${esc(r.name)}</b><span>${r.average.toFixed(2)} / 10</span></div>`).join('')}</div>` : '<p class="stage-sub">Results have not been published.</p>'}`;
+  if (['leaderboard','awards'].includes(c.scene)) content = `<h2>${c.scene==='awards'?'Awards':'Published results'}</h2>${c.results ? `<div class="stage-rows results ${c.results.length>6?'results-grid':''}">${c.results.map(r=>`<div><b>${r.rank}</b><b>${esc(r.name)}</b><span>${r.average.toFixed(2)} / 10</span></div>`).join('')}</div>` : '<p class="stage-sub">Results have not been published.</p>'}`;
   return `<section class="stage" data-turn="${esc(c.turnId||'')}"><img class="stage-logo" src="${esc(settings.stageLogo)}" alt="Leonardo Da Vinci"><div class="stage-kicker">${esc(kicker)}</div>${content}<div class="stage-footer">${preview ? 'PREVIEW · ' : ''}${esc(settings.title)}</div></section>`;
 }
 function setup() {
@@ -257,7 +257,7 @@ function tick() {
   });
 }
 function connectionForm() {
-  return `<form id="connection-form"><label>Event code<input name="code" value="${esc(code)}" placeholder="E.g. DAVINCI26" pattern="[A-Za-z0-9-]{4,12}" maxlength="12" required></label><details ${!state?'open':''}><summary>Server address</summary><label>Public server URL<input name="server" value="${esc(apiBase)}" type="url" placeholder="https://contest-server.example.org"></label><small>Leave blank only when the server and preview use the same address.</small></details><button type="submit" class="primary" style="margin-top:16px">Connect to event</button></form>`;
+  return `<form id="connection-form"><label>Event code<input name="code" value="${esc(code)}" placeholder="E.g. DAVINCI26" pattern="[A-Za-z0-9-]{4,12}" maxlength="12" required></label><details ${!apiBase?'open':''}><summary>Connection settings</summary><label>Public server URL<input name="server" value="${esc(apiBase)}" type="url" placeholder="https://contest-server.example.org"></label><small>Leave blank only when the server and preview use the same address.</small></details><button type="submit" class="primary" style="margin-top:16px">Connect to event</button></form>`;
 }
 function showConnection(message='') {
   app.innerHTML=`${header()}<main class="home"><div class="eyebrow">INTERNAL SCHOOL EVENT</div><h1>Impromptu Speech Contest</h1><p class="intro">Unidad Educativa Leonardo Da Vinci · Manta, Ecuador</p>${message?`<div class="notice error">${esc(message)}</div>`:''}<section class="card connect-box"><h2>Connect this ${role==='home'?'device':role+' screen'}</h2>${connectionForm()}</section>${role==='admin'?'<section class="card connect-box"><h2>Initialize the school event</h2><p class="smalltext muted">Create the persistent event with Divisions A, B and C from the supplied program. An existing event will not be replaced.</p><form id="initialize-form"><label>New event code<input name="code" value="DAVINCI26" pattern="[A-Za-z0-9-]{4,12}" maxlength="12" required></label><button type="submit" class="primary">Initialize event</button></form></section>':''}</main>`;

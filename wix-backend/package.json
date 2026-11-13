@@ -4,14 +4,9 @@
   "version": "0.0.1",
   "scripts": {
     "astro": "astro",
-    "dev": "wix dev",
-    "build": "wix build",
-    "wix": "wix",
-    "preview": "wix preview",
-    "release": "wix release",
-    "generate": "wix generate",
-    "env": "wix env",
-    "skills": "wix skills"
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview"
   },
   "dependencies": {
     "@wix/astro": "^3.0.0",
@@ -23,7 +18,6 @@
     "@wix/data": "^1.0.512"
   },
   "devDependencies": {
-    "@wix/cli": "^1.1.92",
     "@wix/astro-wix-hosting-adapter": "^3.0.0"
   }
 }

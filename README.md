@@ -18,6 +18,8 @@ An internal contest tool for **Unidad Educativa Leonardo Da Vinci, Manta**. One 
 7. Review **Scores & awards**, export the event, and explicitly publish each completed division’s results. Take the leaderboard or awards scene live when ready.
 8. For a future event, use **Archive & reset** in Settings and type the displayed confirmation. This preserves the preceding event revision as a downloadable archive, resets contest progress, restores the source program’s roster/topics/panels, and retains school appearance. Refresh connected role pages after reset.
 
+The initial event is ready under code **DAVINCI26**, with the school roster restored after rehearsal. See [VALIDATION.md](VALIDATION.md) for checks and remaining verification limits.
+
 ## Source program and judging
 
 The supplied `PROGRAM FLOW - 2ND IMPROMPTU SPEECH CONTEST.docx` was treated as reference data, subject to the user’s scope and access requirements. Its private source data is stored in Wix CMS, not the public frontend or repository.
