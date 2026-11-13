@@ -6,8 +6,9 @@
 })(typeof window!=='undefined'?window:globalThis,function(){
   'use strict';
   const TAU=Math.PI*2;
-  function resolve(cue,now){return cue?.wheel&&now>=cue.wheel.finishAt?cue.after:cue;}
+  function resolve(cue,now){return cue?.wheel&&!cue.wheel.pending&&now>=cue.wheel.finishAt?cue.after:cue;}
   function rotation(wheel,now,reduced=false){
+    if(wheel.pending)return 0;
     const count=wheel.entries.length;
     const center=(wheel.selectedIndex+.5)*TAU/count;
     const landing=(((-Math.PI/2-center)%TAU)+TAU)%TAU;

@@ -76,19 +76,17 @@ test('audience payload excludes future topics, roster full names, scores and not
   await command(service,'take_live',{scene:'participant_draw',division:'A',turnId:t.id});s=await service.read('TEST26');assert.equal(JSON.stringify(project(s,'audience')).includes('PRIVATE FUTURE'),false);
   await command(service,'take_live',{scene:'topic_draw',division:'A',turnId:t.id});s=await service.read('TEST26');const view=project(s,'audience'),serialized=JSON.stringify(view);assert.equal(view.live.topic,t.topic.text);assert.ok(!serialized.includes('Private judge note'));assert.ok(!serialized.includes('scores'));assert.ok(!serialized.includes('fullName'));const other=s.divisions.A.topics.find(x=>x.id!==t.topic.id);assert.ok(!serialized.includes(other.text));
 });
-test('participant draw automatically publishes a synchronized wheel, then the current contestant',async()=>{
-  const {service}=await context();await command(service,'confirm_panel');const p=await payload(service,'draw_participant');const first=await service.command('TEST26',p);const again=await service.command('TEST26',p);
-  assert.equal(first.live.scene,'participant_wheel');assert.equal(first.live.wheel.entries.length,2);assert.deepEqual(again.live,first.live);
-  const selected=active(first),entry=first.live.wheel.entries[first.live.wheel.selectedIndex];assert.equal(entry.id,selected.participantId);
-  const during=audience(first,first.live.wheel.startedAt+2);assert.equal(during.live.scene,'participant_wheel');
-  const after=audience(first,first.live.wheel.finishAt+.01);assert.equal(after.live.scene,'contestant');assert.equal(after.live.participant.name,first.divisions.A.participants.find(p=>p.id===selected.participantId).name);assert.equal(after.revision,first.revision);
-  assert.deepEqual(wheel.resolve(during.live,first.live.wheel.finishAt+.01),after.live);
+test('participant wheel stays private and stationary until Take live',async()=>{
+ const {service}=await context();await command(service,'confirm_panel');const request=await payload(service,'draw_participant');const first=await service.command('TEST26',request),retry=await service.command('TEST26',request);
+ assert.equal(first.live,null);assert.deepEqual(first.pendingWheel,retry.pendingWheel);const prepared=first.pendingWheel;assert.equal(prepared.wheel.pending,true);assert.equal(prepared.wheel.startedAt,null);assert.equal(wheel.rotation(prepared.wheel,Date.now()/1000+10000),0);assert.equal(wheel.resolve(prepared,Date.now()/1000+10000).scene,'participant_wheel');assert.equal(audience(first).live,null);
+ await command(service,'take_live',{scene:'participant_wheel',turnId:first.active,wheelId:prepared.id});const s=await service.read('TEST26'),cue=s.live;assert.equal(cue.wheel.pending,false);assert.ok(cue.wheel.startedAt>Date.now()/1000);assert.equal(s.pendingWheel,null);
+ assert.equal(audience(s,cue.wheel.finishAt+1).live.scene,'contestant');assert.equal(audience(s,cue.wheel.finishAt+1).live.participant.name,prepared.after.participant.name);
+ await assert.rejects(command(service,'take_live',{scene:'participant_wheel',turnId:first.active,wheelId:prepared.id}),{status:409});
 });
-test('topic wheel includes numbered slots and only the explicitly drawn prompt',async()=>{
-  const {service}=await context(),t=await draw(service),s=await service.read('TEST26');const cue=s.live;
-  assert.equal(cue.scene,'topic_wheel');assert.deepEqual(cue.wheel.entries.map(e=>e.label),['Topic 01','Topic 02']);assert.equal(cue.after.topic,t.topic.text);
-  const other=s.divisions.A.topics.find(row=>row.id!==t.topic.id);assert.ok(!JSON.stringify(audience(s)).includes(other.text));
-  const late=audience(s,cue.wheel.finishAt+60);assert.equal(late.live.scene,'contestant');assert.equal(late.live.topic,t.topic.text);assert.ok(!late.live.wheel);
+test('topic wheel publishes only on Take live and excludes unused prompts',async()=>{
+ const {service}=await context(),t=await draw(service);let s=await service.read('TEST26');const pending=s.pendingWheel;
+ assert.equal(pending.scene,'topic_wheel');assert.deepEqual(pending.wheel.entries.map(e=>e.label),['Topic 01','Topic 02']);assert.equal(audience(s).live,null);
+ await command(service,'take_live',{scene:'topic_wheel',turnId:t.id,wheelId:pending.id});s=await service.read('TEST26');const cue=s.live,other=s.divisions.A.topics.find(row=>row.id!==t.topic.id);assert.ok(!JSON.stringify(audience(s)).includes(other.text));assert.equal(audience(s,cue.wheel.finishAt+60).live.topic,t.topic.text);
 });
 test('wheel animation lands the server-selected segment under the pointer for all pool sizes',()=>{
   for(const count of [1,2,3,8,10,100])for(let index=0;index<count;index++){

@@ -1,5 +1,10 @@
 # Verification record
 
+## Take live starts the wheel
+
+Draws now save a private stationary wheel with no start/deadline timestamps. Only Take live creates the synchronized spin timeline. Tests verify no audience change before publication, stationary preview even after a long delay, full spin after publication, automatic reveal afterward, and no replay from a second Take live. Existing event data is preserved.
+
+
 ## Undo and contestant selection
 
 Verified on 13 November 2026. All 35 tests pass, including undo history, participant/topic pool restoration, completion reopening, separate score ownership across contestant switches, confirmation and stale-update rejection. TypeScript and production build passed. Browser checks used synthetic local participants; the live event was not changed during testing.

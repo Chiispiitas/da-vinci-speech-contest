@@ -6,7 +6,7 @@ export const timestamp=()=>Date.now()/1000;
 const uid=()=>crypto.randomUUID();
 export function text(value,max,label='Text',empty=false){check(typeof value==='string',`${label} must be text.`);value=value.trim();check((empty||value)&&value.length<=max,`${label} needs 1–${max} characters.`);return value;}
 const number=(v,min,max,label)=>{check(Number.isInteger(v)&&v>=min&&v<=max,`${label} must be ${min}–${max}.`);return v;};
-export const SCENES=['standby','introduction','participants','contestant','participant_draw','topic_draw','preparation','speech','announcement','leaderboard','awards','closing'];
+export const SCENES=['standby','introduction','participants','contestant','participant_wheel','topic_wheel','participant_draw','topic_draw','preparation','speech','announcement','leaderboard','awards','closing'];
 export const panel=(s,d)=>s.judges.filter(j=>j.divisions.includes(d));
 export const active=s=>s.turns.find(t=>t.id===s.active);
 export const participant=(s,t)=>s.divisions[t.division].participants.find(p=>p.id===t.participantId);
@@ -19,10 +19,10 @@ export function drawScene(s,t,pool,kind){
   const after={id:id+'-result',scene:'contestant',division:t.division,label:d.label,turnId:t.id,participant:{name:p.name,group:p.group}};
   if(kind==='topic')after.topic=t.topic.text;
   return {id,scene:kind+'_wheel',division:t.division,label:d.label,turnId:t.id,
-    wheel:{id,kind,entries,selectedIndex:entries.findIndex(row=>row.id===selectedId),startedAt,endsAt:startedAt+6,finishAt:startedAt+8,rotations:6},
+    wheel:{id,kind,entries,selectedIndex:entries.findIndex(row=>row.id===selectedId),pending:true,startedAt:null,endsAt:null,finishAt:null,rotations:6},
     after};
 }
-export const visibleScene=(cue,at=timestamp())=>cue?.wheel&&at>=cue.wheel.finishAt?clone(cue.after):clone(cue);
+export const visibleScene=(cue,at=timestamp())=>cue?.wheel&&!cue.wheel.pending&&at>=cue.wheel.finishAt?clone(cue.after):clone(cue);
 const randomPick=rows=>{
   // Rejection sampling avoids modulo bias.
   const max=Math.floor(0x100000000/rows.length)*rows.length;
@@ -120,13 +120,14 @@ export function apply(s,action,data,seed){
     check(!t,'A participant is already active. Complete that turn first.',409);check(div===s.division,'Select this division first.');check(d.confirmed,'Review names and confirm this panel first.');check(!d.published,'This division’s results are already published.');
     const used=new Set(s.turns.filter(t=>t.division===div&&t.status!=='cancelled').map(t=>t.participantId)),pool=d.participants.filter(p=>!used.has(p.id));check(pool.length,'All participants in this division have spoken.');
     const turn={id:uid(),division:div,participantId:randomPick(pool).id,topic:null,scores:{},panel:panel(s,div).map(j=>j.id),status:'active',drawnAt:timestamp(),timer:{phase:'preparation',duration:s.settings.prepSeconds,remaining:s.settings.prepSeconds,running:false,endsAt:null}};
-    s.turns.push(turn);s.active=turn.id;s.live=drawScene(s,turn,pool,'participant');
+    s.turns.push(turn);s.active=turn.id;s.pendingWheel=drawScene(s,turn,pool,'participant');
   }else if(action==='draw_topic'){
     check(t&&t.division===div&&!t.topic,'Draw one topic for the current participant only.',409);
     check(data.turnId===t.id,'The active participant changed.',409);
-    const used=new Set(s.turns.filter(x=>x.division===div&&x.status!=='cancelled'&&x.topic).map(x=>x.topic.id)),pool=d.topics.filter(x=>!used.has(x.id));check(pool.length,'No unused topics remain.');t.topic=clone(randomPick(pool));s.live=drawScene(s,t,pool,'topic');
+    const used=new Set(s.turns.filter(x=>x.division===div&&x.status!=='cancelled'&&x.topic).map(x=>x.topic.id)),pool=d.topics.filter(x=>!used.has(x.id));check(pool.length,'No unused topics remain.');t.topic=clone(randomPick(pool));s.pendingWheel=drawScene(s,t,pool,'topic');
   }else if(['undo_participant','undo_topic','undo_complete','select_participant'].includes(action)){
     check(data.confirm===true,'Confirm this contest change.');check(!d.published,'Published divisions cannot be changed.');
+    s.pendingWheel=null;
     const pause=turn=>{if(turn?.timer.running)Object.assign(turn.timer,{remaining:remaining(turn.timer),running:false,endsAt:null});};
     if(action==='undo_participant'||action==='undo_topic'){
       check(t&&t.division===div&&data.turnId===t.id,'The active participant changed.',409);pause(t);
@@ -167,7 +168,12 @@ export function apply(s,action,data,seed){
   }else if(action==='complete'){
     check(t&&data.turnId===t.id,'The active participant changed.',409);check(t.topic,'Draw the participant’s topic before completing their speech.');
     if(t.timer.running)Object.assign(t.timer,{remaining:remaining(t.timer),running:false,endsAt:null});Object.assign(t,{status:'complete',completedAt:timestamp()});s.active=null;
-  }else if(action==='take_live')s.live=scene(s,data);
+  }else if(action==='take_live'){
+    if(['participant_wheel','topic_wheel'].includes(data.scene)){
+      const pending=s.pendingWheel;check(pending&&pending.scene===data.scene&&pending.id===data.wheelId&&pending.turnId===data.turnId&&t?.id===data.turnId,'The prepared wheel changed. Review the latest preview.',409);
+      const cue=clone(pending),start=timestamp()+.8;Object.assign(cue.wheel,{pending:false,startedAt:start,endsAt:start+6,finishAt:start+8});s.live=cue;s.pendingWheel=null;
+    }else s.live=scene(s,data);
+  }
   else if(action==='publish'){
     check(data.confirm===`PUBLISH ${div}`,`Type PUBLISH ${div} to publish results.`);check(!t||t.division!==div,'Complete the current participant first.');const rows=standings(s,div);
     check(rows.length===d.participants.length&&rows.length,'Every participant needs all panel scores before publication.');check(!d.published,'Results are already published.',409);d.published={at:timestamp(),rows};

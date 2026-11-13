@@ -13,7 +13,7 @@ let judgeTurnId=params.get('turn')||'';
 let state, tab = 'control', selectedDivision = 'A', draft, busy = false, failures = 0, editing = false;
 let serverEpoch = Date.now(), serverPerf = performance.now(), displayedCue = '', lastRendered = -1, displayedSettings = '';
 let pending = null;
-const scenes = {standby:'Standby', introduction:'Division introduction', participants:'Participants', contestant:'Current contestant', participant_draw:'Participant reveal', topic_draw:'Topic reveal', preparation:'Preparation timer', speech:'Speech timer', announcement:'Announcement', leaderboard:'Published leaderboard', awards:'Awards', closing:'Closing'};
+const scenes = {standby:'Standby', introduction:'Division introduction', participants:'Participants', participant_wheel:'Participant wheel', topic_wheel:'Topic wheel', contestant:'Current contestant', participant_draw:'Participant reveal', topic_draw:'Topic reveal', preparation:'Preparation timer', speech:'Speech timer', announcement:'Announcement', leaderboard:'Published leaderboard', awards:'Awards', closing:'Closing'};
 const sceneNames={...scenes,participant_wheel:'Participant wheel',topic_wheel:'Topic wheel'};
 const now = () => (serverEpoch + performance.now() - serverPerf) / 1000;
 const active = () => state?.turns?.find(t => t.id === state.active);
@@ -87,7 +87,9 @@ async function sendPending() {
     const savedAction=pending.action;
     const data = await request(`command?code=${encodeURIComponent(code)}`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(pending)});
     persistPending(null); accept(data);
-    if(['draw_participant','draw_topic','undo_participant','undo_topic','undo_complete','select_participant'].includes(savedAction)){draft={scene:'contestant',division:selectedDivision,message:'',followLive:true};saveLocal(`davinci-draft-${state.generation}`,JSON.stringify(draft));}
+    if(['undo_participant','undo_topic','undo_complete','select_participant'].includes(savedAction)){draft={scene:'contestant',division:selectedDivision,message:'',followLive:true};saveLocal(`davinci-draft-${state.generation}`,JSON.stringify(draft));}
+    if(['draw_participant','draw_topic'].includes(savedAction)){draft={scene:savedAction==='draw_participant'?'participant_wheel':'topic_wheel',division:selectedDivision,message:'',followLive:false};saveLocal(`davinci-draft-${state.generation}`,JSON.stringify(draft));}
+    if(savedAction==='take_live'&&state.live?.wheel){draft={scene:'contestant',division:selectedDivision,message:'',followLive:true};saveLocal(`davinci-draft-${state.generation}`,JSON.stringify(draft));}
     if(savedAction==='score')judgeTurnId='';
     editing = false; render(true); toast('Saved to the event.');
   } catch (e) {
@@ -148,12 +150,13 @@ function control() {
       <hr class="sep">${t.topic ? `<div class="eyebrow">DRAWN TOPIC</div><p class="topic">${esc(t.topic.text)}</p>` : `<p class="muted">The participant is drawn. Select their topic next.</p>${button('Draw topic','draw-topic',{'wheel-wait':'true'},'primary',wheelBusy)}`}` : `<div class="empty"><span class="symbol">◎</span>${completed === d.participants.length ? 'All speeches in this division are complete.' : 'Ready for the next participant.'}</div>${button('Draw participant','draw-participant',{},'primary',!ready)}`}
     </section>${t ? `<section class="card"><div class="card-head"><h2>Contest timer</h2><span class="chip">${esc(t.timer.phase)}</span></div><div class="row">${button('Preparation','phase',{phase:'preparation'},t.timer.phase === 'preparation' ? 'selected' : '',t.timer.running || !t.topic)}${button('Speech','phase',{phase:'speech'},t.timer.phase === 'speech' ? 'selected' : '',t.timer.running || !t.topic)}</div><div class="timer-box"><div>${phaseClock(t.timer)}<div class="timer-label">${t.timer.phase === 'speech' ? 'Green at 2:00 elapsed · limit 3:00' : 'One minute to prepare'}</div></div><div class="timer-controls">${button(t.timer.running ? 'Pause' : 'Start','timer',{operation:t.timer.running ? 'pause' : 'start'},'primary',!t.topic)}${button('Reset','timer-reset',{},'',!t.topic)}</div></div><small>The timer continues on all connected screens. Expiry does not submit scores.</small></section>` : ''}
     <section class="card"><div class="card-head"><h2>Judging panel</h2><span class="chip">${t ? Object.keys(t.scores).length : 0} / ${t ? t.panel.length : panel(selectedDivision).length} submitted</span></div>${panel(selectedDivision).map(j => `<div class="row between" style="padding:10px 0"><span>${esc(j.name)}<br><small>${esc(j.description)}</small></span><span class="chip ${t?.scores[j.id] ? 'live' : ''}">${t?.scores[j.id] ? 'Submitted' : 'Waiting'}</span></div>`).join('')}${t ? `<hr class="sep"><p class="smalltext muted">Complete the speech and continue. Unfinished score sheets stay available to the judges.</p>${button('Complete participant','complete',{},'primary',!t.topic)}` : ''}</section></div>
-    <div><section class="card"><div class="card-head"><h2>Scene preview</h2><span class="chip">${draft.followLive?'FOLLOWING LIVE':'PRIVATE PREVIEW'}</span></div><div id="preview" class="preview">${stage(previewCue(),true)}</div><p class="smalltext muted" style="margin-top:12px">Draws automatically show the wheel, then the current contestant. Other scene changes use Take live.</p><label>Scene<select id="scene">${Object.entries(scenes).map(([k,v]) => `<option value="${k}" ${draft.scene===k?'selected':''}>${v}</option>`).join('')}</select></label><label>Message<textarea id="scene-message" maxlength="1000" placeholder="Optional announcement or closing message">${esc(draft.message)}</textarea></label><div class="row between"><span class="not-saved" id="draft-status">${draft.followLive?'Following automatic draw':'Draft only'}</span>${button('Take live →','take-live',{},'gold')}</div></section>
+    <div><section class="card"><div class="card-head"><h2>Scene preview</h2><span class="chip">${draft.followLive?'FOLLOWING LIVE':'PRIVATE PREVIEW'}</span></div><div id="preview" class="preview">${stage(previewCue(),true)}</div><p class="smalltext muted" style="margin-top:12px">Draws prepare a stationary wheel here. Take live starts its spin; the selected contestant appears automatically afterward.</p><label>Scene<select id="scene">${Object.entries(scenes).map(([k,v]) => `<option value="${k}" ${draft.scene===k?'selected':''}>${v}</option>`).join('')}</select></label><label>Message<textarea id="scene-message" maxlength="1000" placeholder="Optional announcement or closing message">${esc(draft.message)}</textarea></label><div class="row between"><span class="not-saved" id="draft-status">${draft.followLive?'Following automatic draw':'Draft only'}</span>${button('Take live →','take-live',{},'gold')}</div></section>
     <section class="card"><div class="card-head"><h2>Audience screens</h2><span class="chip live">${state.live ? 'SAVED LIVE SCENE' : 'STANDBY'}</span></div><p data-live-scene>${esc(state.live ? sceneNames[window.ContestWheel.resolve(state.live,now()).scene] : 'No scene taken live yet')}</p>${state.live ? `<small>Division ${esc(state.live.division)}</small>` : '<small>The school title appears until the first scene is taken live.</small>'}<hr class="sep"><a class="button" href="${link('audience')}" target="_blank" rel="noopener">Open audience screen ↗</a></section></div></div>`;
 }
 function previewCue() {
   if (!state || !draft) return null;
   if(draft.followLive)return state.live;
+  if(['participant_wheel','topic_wheel'].includes(draft.scene)&&state.pendingWheel?.scene===draft.scene)return state.pendingWheel;
   const d = state.divisions[selectedDivision], t = active();
   const cue = {scene:draft.scene, division:selectedDivision, label:d.label, message:draft.message};
   if (draft.scene === 'introduction') Object.assign(cue,{emcee:d.emcee,judges:panel(selectedDivision).map(j=>j.name)});
@@ -175,8 +178,8 @@ function stage(cue, preview = false) {
   if (c.scene === 'introduction') content = `<h1>Division ${esc(c.division)}</h1><h2>${esc(c.label)}</h2><p class="stage-sub">Master of Ceremony · ${esc(c.emcee)}<br>${(c.judges||[]).map(esc).join(' · ')}</p>`;
   if (c.scene === 'participants') content = `<h2>Our participants</h2><div class="stage-rows">${(c.participants||[]).map(p=>`<div>${esc(p.name)}<small>${esc(p.group)}</small></div>`).join('')}</div>`;
   if(c.wheel){
-    const revealed=now()>=c.wheel.endsAt;
-    content=`<div class="wheel-layout" data-wheel-cue="${esc(JSON.stringify(c))}"><div class="wheel-frame"><canvas class="wheel-canvas" width="1000" height="1000" aria-label="${c.wheel.kind==='participant'?'Participant names':'Numbered topic slots'}"></canvas><div class="wheel-pointer"></div><div class="wheel-hub"><img src="${esc(settings.stageLogo)}" alt=""></div></div><div class="wheel-detail"><div class="stage-kicker">${c.wheel.kind==='participant'?'Participant draw':'Topic draw'}</div><h1 data-wheel-name>${esc(revealed?c.after.participant.name:'Drawing…')}</h1><div class="stage-topic" data-wheel-topic>${esc(revealed?(c.after.topic||c.after.participant.group):'')}</div></div></div>`;
+    const revealed=!c.wheel.pending&&now()>=c.wheel.endsAt;
+    content=`<div class="wheel-layout" data-wheel-cue="${esc(JSON.stringify(c))}"><div class="wheel-frame"><canvas class="wheel-canvas" width="1000" height="1000" aria-label="${c.wheel.kind==='participant'?'Participant names':'Numbered topic slots'}"></canvas><div class="wheel-pointer"></div><div class="wheel-hub"><img src="${esc(settings.stageLogo)}" alt=""></div></div><div class="wheel-detail"><div class="stage-kicker">${c.wheel.kind==='participant'?'Participant draw':'Topic draw'}</div><h1 data-wheel-name>${esc(revealed?c.after.participant.name:c.wheel.pending?'Ready to draw':'Drawing…')}</h1><div class="stage-topic" data-wheel-topic>${esc(revealed?(c.after.topic||c.after.participant.group):'')}</div></div></div>`;
   }
   if (['contestant','participant_draw','topic_draw','preparation','speech'].includes(c.scene)) {
     if (c.scene === 'participant_draw') content += '<div class="draw-ring">◎</div><div class="stage-kicker">Participant draw</div>';
@@ -190,7 +193,7 @@ function stage(cue, preview = false) {
   if (c.scene === 'announcement') content = `<div class="stage-topic">${esc(c.message || 'Announcement')}</div>`;
   if (c.scene === 'closing') content = `<h1>${esc(c.message || 'Thank you for participating')}</h1><p class="stage-sub">${esc(settings.title)}</p>`;
   if (['leaderboard','awards'].includes(c.scene)) content = `<h2>${c.scene==='awards'?'Awards':'Published results'}</h2>${c.results ? `<div class="stage-rows results ${c.results.length>6?'results-grid':''}">${c.results.map(r=>`<div><b>${r.rank}</b><b>${esc(r.name)}</b><span>${r.average.toFixed(2)} / 10</span></div>`).join('')}</div>` : '<p class="stage-sub">Results have not been published.</p>'}`;
-  return `<section class="stage" data-turn="${esc(c.turnId||'')}"><img class="stage-logo" src="${esc(settings.stageLogo)}" alt="Leonardo Da Vinci"><div class="stage-kicker">${esc(kicker)}</div>${content}<div class="stage-footer">${preview ? 'PREVIEW · ' : ''}${esc(settings.title)}</div></section>`;
+  return `<section class="stage" data-turn="${esc(c.turnId||'')}" data-wheel-id="${esc(c.wheel?.id||'')}"><img class="stage-logo" src="${esc(settings.stageLogo)}" alt="Leonardo Da Vinci"><div class="stage-kicker">${esc(kicker)}</div>${content}<div class="stage-footer">${preview ? 'PREVIEW · ' : ''}${esc(settings.title)}</div></section>`;
 }
 function setup() {
   const d = state.divisions[selectedDivision], locked = state.turns.some(t=>t.division===selectedDivision);
@@ -282,7 +285,7 @@ const wheelModels=new WeakMap();
 function mountWheels(){
   const nodes=document.querySelectorAll('[data-wheel-cue]');
   nodes.forEach(node=>{if(!wheelModels.has(node)){const cue=JSON.parse(node.dataset.wheelCue);wheelModels.set(node,cue);window.ContestWheel.paint(node.querySelector('canvas'),cue.wheel);}});
-  if(nodes.length&&!wheelFrame)wheelFrame=requestAnimationFrame(animateWheels);
+  if([...nodes].some(node=>!wheelModels.get(node)?.wheel.pending)&&!wheelFrame)wheelFrame=requestAnimationFrame(animateWheels);
 }
 function animateWheels(){
   wheelFrame=0;
@@ -291,6 +294,7 @@ function animateWheels(){
   nodes.forEach(node=>{
     const cue=wheelModels.get(node);if(!cue)return;
     const at=now(),wheel=cue.wheel;
+    if(wheel.pending)return;
     if(at>=wheel.finishAt){
       const preview=!!node.closest('#preview');
       node.closest('.stage').outerHTML=stage(cue.after,preview);
@@ -303,7 +307,7 @@ function animateWheels(){
       node.querySelector('[data-wheel-topic]').textContent=cue.after.topic||cue.after.participant.group;
     }
   });
-  if(document.querySelector('[data-wheel-cue]'))wheelFrame=requestAnimationFrame(animateWheels);
+  if([...document.querySelectorAll('[data-wheel-cue]')].some(node=>!wheelModels.get(node)?.wheel.pending))wheelFrame=requestAnimationFrame(animateWheels);
 }
 function connectionForm() {
   return `<form id="connection-form"><label>Event code<input name="code" value="${esc(code)}" placeholder="E.g. DAVINCI26" pattern="[A-Za-z0-9-]{4,12}" maxlength="12" required></label><details ${!apiBase?'open':''}><summary>Connection settings</summary><label>Public server URL<input name="server" value="${esc(apiBase)}" type="url" placeholder="https://contest-server.example.org"></label><small>Leave blank only when the server and preview use the same address.</small></details><button type="submit" class="primary" style="margin-top:16px">Connect to event</button></form>`;
@@ -354,7 +358,7 @@ async function clickAction(target) {
   if(action==='undo-topic')return confirmDialog('Undo topic draw?','The topic will return to its pool. This is available before any judge has submitted a score.','',()=>mutate('undo_topic',{division:selectedDivision,turnId:t.id,confirm:true}));
   if(action==='undo-complete')return confirmDialog('Undo last completion?','Reopen this division’s last completed speech, preserving its topic and scores. Any other current contestant will be paused.','',()=>mutate('undo_complete',{division:selectedDivision,turnId:target.dataset.turn,confirm:true}));
   if(action==='complete')return mutate('complete',{turnId:t.id});
-  if(action==='take-live')return mutate('take_live',{...draft,division:selectedDivision,turnId:document.querySelector('#preview .stage')?.dataset.turn||null});
+  if(action==='take-live')return mutate('take_live',{...draft,division:selectedDivision,turnId:document.querySelector('#preview .stage')?.dataset.turn||null,wheelId:document.querySelector('#preview .stage')?.dataset.wheelId||null});
   if(action==='publish')return confirmDialog('Publish division results',`Publish the reviewed Division ${selectedDivision} result snapshot. It can then be shown on the audience display.`,`PUBLISH ${selectedDivision}`,confirm=>mutate('publish',{division:selectedDivision,confirm}));
   if(action==='reset')return confirmDialog('Archive and reset this event','The server will save an archive, then clear all draws, scores and published results for a future event. Export first if you also want a local copy.',`RESET ${code}`,confirm=>mutate('reset',{confirm}));
   if(action==='export-json')return exportEvent();
