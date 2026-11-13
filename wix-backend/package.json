@@ -1,0 +1,29 @@
+{
+  "name": "wix-backend",
+  "type": "module",
+  "version": "0.0.1",
+  "scripts": {
+    "astro": "astro",
+    "dev": "wix dev",
+    "build": "wix build",
+    "wix": "wix",
+    "preview": "wix preview",
+    "release": "wix release",
+    "generate": "wix generate",
+    "env": "wix env",
+    "skills": "wix skills"
+  },
+  "dependencies": {
+    "@wix/astro": "^3.0.0",
+    "@wix/astro-pages": "^3.0.0",
+    "@wix/essentials": "^1.0.6",
+    "@wix/sdk": "^1.21.5",
+    "astro": "^7.3.2",
+    "typescript": "^5.8.3",
+    "@wix/data": "^1.0.512"
+  },
+  "devDependencies": {
+    "@wix/cli": "^1.1.92",
+    "@wix/astro-wix-hosting-adapter": "^3.0.0"
+  }
+}

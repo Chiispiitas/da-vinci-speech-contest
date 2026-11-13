@@ -1,0 +1,15 @@
+node_modules/
+.env*
+.astro/
+.wix/
+.wrangler/
+dist/
+*.log
+*.zip
+.install-exit
+.gemini/
+CLAUDE.md
+server/
+__pycache__/
+*.sqlite3*
+.DS_Store
