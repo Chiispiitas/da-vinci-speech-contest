@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {ContestService,Problem,project,active,remaining} from '../wix-backend/src/contest/core.mjs';
+import {ContestService,Problem,project,active,remaining,audience} from '../wix-backend/src/contest/core.mjs';
+import wheel from '../frontend/wheel.js';
 
 const fixture=()=>({source:'Synthetic test fixture',notes:[],criteria:Array.from({length:10},(_,i)=>({id:String(i+1),name:`Criterion ${i+1}`,descriptors:{}})),judges:[{id:'one',name:'Judge One',description:'Test',divisions:['A','B','C']},{id:'two',name:'Judge Two',description:'Test',divisions:['A','B','C']}],divisions:Object.fromEntries(['A','B','C'].map(d=>[d,{label:`Division ${d}`,emcee:'Test Emcee',schedule:['08:00','08:10','08:55','09:00','09:10'],participants:[{id:d+'1',name:'First '+d,fullName:'First Student '+d,group:'Grade 8'},{id:d+'2',name:'Second '+d,fullName:'Second Student '+d,group:'Grade 9'}],topics:[{id:d+'T1',text:'PRIVATE FUTURE TOPIC '+d+' ONE'},{id:d+'T2',text:'PRIVATE FUTURE TOPIC '+d+' TWO'}]}]))});
 class MemoryRepo{
@@ -65,13 +66,57 @@ test('an old turn cannot receive a score after completion',async()=>{
 test('panel changes and roster changes are locked after first draw',async()=>{
   const {service}=await context();await draw(service);await assert.rejects(command(service,'roster',{participants:[{name:'Changed'}]}),{status:422});const s=await service.read('TEST26');s.judges[0].name='Changed judge';await assert.rejects(command(service,'judges',{judges:s.judges}),{status:422});
 });
-test('completion requires every assigned judge; average is the mean of judge totals',async()=>{
-  const {service}=await context(),t=await draw(service);await assert.rejects(command(service,'complete',{turnId:t.id}),{status:422});await complete(service,t);assert.equal(project(await service.read('TEST26')).standings.A[0].average,8.75);
+test('speech completion does not wait for judges; averages require every assigned score',async()=>{
+  const {service}=await context(),t=await draw(service);await command(service,'complete',{turnId:t.id});assert.equal((await service.read('TEST26')).active,null);assert.equal(project(await service.read('TEST26')).standings.A.length,0);
+  await command(service,'score',score(t,'one'));assert.equal(project(await service.read('TEST26')).standings.A.length,0);
+  await command(service,'score',score(t,'two',.75));assert.equal(project(await service.read('TEST26')).standings.A[0].average,8.75);
 });
 test('audience payload excludes future topics, roster full names, scores and notes',async()=>{
-  const {service}=await context(),t=await draw(service);await command(service,'score',score(t,'one'));let s=await service.read('TEST26');assert.equal(JSON.stringify(project(s,'audience')).includes('PRIVATE FUTURE'),false);
+  const {service}=await context(),t=await draw(service);await command(service,'score',score(t,'one'));let s=await service.read('TEST26');const unused=s.divisions.A.topics.find(x=>x.id!==t.topic.id);assert.equal(JSON.stringify(project(s,'audience')).includes(unused.text),false);
   await command(service,'take_live',{scene:'participant_draw',division:'A',turnId:t.id});s=await service.read('TEST26');assert.equal(JSON.stringify(project(s,'audience')).includes('PRIVATE FUTURE'),false);
   await command(service,'take_live',{scene:'topic_draw',division:'A',turnId:t.id});s=await service.read('TEST26');const view=project(s,'audience'),serialized=JSON.stringify(view);assert.equal(view.live.topic,t.topic.text);assert.ok(!serialized.includes('Private judge note'));assert.ok(!serialized.includes('scores'));assert.ok(!serialized.includes('fullName'));const other=s.divisions.A.topics.find(x=>x.id!==t.topic.id);assert.ok(!serialized.includes(other.text));
+});
+test('participant draw automatically publishes a synchronized wheel, then the current contestant',async()=>{
+  const {service}=await context();await command(service,'confirm_panel');const p=await payload(service,'draw_participant');const first=await service.command('TEST26',p);const again=await service.command('TEST26',p);
+  assert.equal(first.live.scene,'participant_wheel');assert.equal(first.live.wheel.entries.length,2);assert.deepEqual(again.live,first.live);
+  const selected=active(first),entry=first.live.wheel.entries[first.live.wheel.selectedIndex];assert.equal(entry.id,selected.participantId);
+  const during=audience(first,first.live.wheel.startedAt+2);assert.equal(during.live.scene,'participant_wheel');
+  const after=audience(first,first.live.wheel.finishAt+.01);assert.equal(after.live.scene,'contestant');assert.equal(after.live.participant.name,first.divisions.A.participants.find(p=>p.id===selected.participantId).name);assert.equal(after.revision,first.revision);
+  assert.deepEqual(wheel.resolve(during.live,first.live.wheel.finishAt+.01),after.live);
+});
+test('topic wheel includes numbered slots and only the explicitly drawn prompt',async()=>{
+  const {service}=await context(),t=await draw(service),s=await service.read('TEST26');const cue=s.live;
+  assert.equal(cue.scene,'topic_wheel');assert.deepEqual(cue.wheel.entries.map(e=>e.label),['Topic 01','Topic 02']);assert.equal(cue.after.topic,t.topic.text);
+  const other=s.divisions.A.topics.find(row=>row.id!==t.topic.id);assert.ok(!JSON.stringify(audience(s)).includes(other.text));
+  const late=audience(s,cue.wheel.finishAt+60);assert.equal(late.live.scene,'contestant');assert.equal(late.live.topic,t.topic.text);assert.ok(!late.live.wheel);
+});
+test('wheel animation lands the server-selected segment under the pointer for all pool sizes',()=>{
+  for(const count of [1,2,3,8,10,100])for(let index=0;index<count;index++){
+    const data={entries:Array(count).fill({label:'Test'}),selectedIndex:index,rotations:6,startedAt:10,endsAt:16,finishAt:18};
+    assert.equal(wheel.rotation(data,9),0);const angle=wheel.rotation(data,16)*Math.PI/180;
+    const center=(index+.5)*2*Math.PI/count;const distance=Math.atan2(Math.sin(angle+center+Math.PI/2),Math.cos(angle+center+Math.PI/2));assert.ok(Math.abs(distance)<1e-10);
+    assert.equal(wheel.rotation(data,12,true),wheel.rotation(data,100));assert.ok(wheel.rotation(data,12)<wheel.rotation(data,14));
+  }
+});
+test('judges can finish an earlier speech after the next contestant is drawn',async()=>{
+  const {service}=await context(),first=await draw(service);await command(service,'complete',{turnId:first.id});await command(service,'draw_participant');const next=active(await service.read('TEST26'));await command(service,'draw_topic',{turnId:next.id});
+  let s=await service.read('TEST26');assert.equal(project(s,'judge','one').current.id,first.id);assert.equal(project(s,'judge','one').current.status,'complete');assert.equal(project(s,'judge','one').queue.filter(t=>!t.submitted).length,2);
+  const oldScore=await payload(service,'score',score(first,'one'));const nextScore=await payload(service,'score',score(next,'one',.5));await Promise.all([service.command('TEST26',oldScore),service.command('TEST26',nextScore)]);
+  s=await service.read('TEST26');assert.equal(s.turns.find(t=>t.id===first.id).scores.one.values[0],1);assert.equal(s.turns.find(t=>t.id===next.id).scores.one.values[0],.5);
+  assert.equal(project(s,'judge','two').current.id,first.id);assert.equal(project(s,'judge','one',first.id).current.id,first.id);assert.equal(project(s,'judge','two',next.id).current.id,next.id);
+  assert.equal(JSON.stringify(project(s,'judge','two')).includes('Private judge note'),false);
+});
+test('publication waits for outstanding scores even when every speech is completed',async()=>{
+  const {service}=await context(),first=await draw(service);await command(service,'complete',{turnId:first.id});await command(service,'draw_participant');const second=active(await service.read('TEST26'));await command(service,'draw_topic',{turnId:second.id});await command(service,'complete',{turnId:second.id});
+  await assert.rejects(command(service,'publish',{confirm:'PUBLISH A'}),{status:422});
+  for(const turn of [first,second])for(const judge of ['one','two'])await command(service,'score',score(turn,judge));
+  await command(service,'publish',{confirm:'PUBLISH A'});const s=await service.read('TEST26');assert.equal(s.divisions.A.published.rows.length,2);
+  await assert.rejects(command(service,'score',score(first,'one')),{status:409});
+});
+test('completing a speech while a judge submits preserves both changes',async()=>{
+  const {service}=await context(),t=await draw(service),finished=await payload(service,'complete',{turnId:t.id}),submission=await payload(service,'score',score(t,'one'));
+  await Promise.all([service.command('TEST26',finished),service.command('TEST26',submission)]);
+  const s=await service.read('TEST26');assert.equal(s.active,null);assert.equal(s.turns[0].status,'complete');assert.equal(s.turns[0].scores.one.values[0],1);
 });
 test('judge projection includes only that judge’s own submitted score',async()=>{
   const {service}=await context(),t=await draw(service);await command(service,'score',score(t,'one'));const s=await service.read('TEST26');assert.ok(project(s,'judge','one').current.myScore);assert.equal(project(s,'judge','two').current.myScore,null);assert.ok(!JSON.stringify(project(s,'judge','two')).includes('Private judge note'));

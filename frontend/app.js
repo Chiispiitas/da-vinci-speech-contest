@@ -9,10 +9,12 @@ const saveLocal = (key, value) => { try { localStorage.setItem(key, value); } ca
 let apiBase = (params.get('server') || window.CONTEST_CONFIG?.apiBase || readLocal('davinci-server')).replace(/\/$/, '');
 let code = (params.get('code') || readLocal('davinci-code')).toUpperCase();
 let judgeId = params.has('judge') ? params.get('judge') : readLocal('davinci-judge');
+let judgeTurnId=params.get('turn')||'';
 let state, tab = 'control', selectedDivision = 'A', draft, busy = false, failures = 0, editing = false;
 let serverEpoch = Date.now(), serverPerf = performance.now(), displayedCue = '', lastRendered = -1, displayedSettings = '';
 let pending = null;
-const scenes = {standby:'Standby', introduction:'Division introduction', participants:'Participants', participant_draw:'Participant draw', topic_draw:'Topic draw', preparation:'Preparation timer', speech:'Speech timer', announcement:'Announcement', leaderboard:'Published leaderboard', awards:'Awards', closing:'Closing'};
+const scenes = {standby:'Standby', introduction:'Division introduction', participants:'Participants', contestant:'Current contestant', participant_draw:'Participant reveal', topic_draw:'Topic reveal', preparation:'Preparation timer', speech:'Speech timer', announcement:'Announcement', leaderboard:'Published leaderboard', awards:'Awards', closing:'Closing'};
+const sceneNames={...scenes,participant_wheel:'Participant wheel',topic_wheel:'Topic wheel'};
 const now = () => (serverEpoch + performance.now() - serverPerf) / 1000;
 const active = () => state?.turns?.find(t => t.id === state.active);
 const panel = division => state.judges.filter(j => j.divisions.includes(division));
@@ -82,8 +84,12 @@ async function sendPending() {
   busy = true;
   document.querySelectorAll('button[data-action],button[type=submit]').forEach(b => b.disabled = true);
   try {
+    const savedAction=pending.action;
     const data = await request(`command?code=${encodeURIComponent(code)}`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(pending)});
-    persistPending(null); accept(data); editing = false; render(true); toast('Saved to the event.');
+    persistPending(null); accept(data);
+    if(['draw_participant','draw_topic'].includes(savedAction)){draft={scene:'contestant',division:selectedDivision,message:'',followLive:true};saveLocal(`davinci-draft-${state.generation}`,JSON.stringify(draft));}
+    if(savedAction==='score')judgeTurnId='';
+    editing = false; render(true); toast('Saved to the event.');
   } catch (e) {
     if (e.status && e.status!==429 && e.status<500) { persistPending(null); editing = false; await refresh(true); }
     else { failures++; connection(); render(true); }
@@ -102,7 +108,7 @@ async function refresh(force = false) {
   if (refreshing || !code || role === 'home') return;
   refreshing = true;
   try {
-    const data = await request(`${role}?code=${encodeURIComponent(code)}${role === 'judge' ? `&judge=${encodeURIComponent(judgeId)}` : ''}`);
+    const data = await request(`${role}?code=${encodeURIComponent(code)}${role === 'judge' ? `&judge=${encodeURIComponent(judgeId)}${judgeTurnId?'&turn='+encodeURIComponent(judgeTurnId):''}` : ''}`);
     accept(data); render(force);
   } catch (e) {
     failures++; connection();
@@ -132,23 +138,26 @@ function control() {
   const completed = state.turns.filter(x => x.division === selectedDivision && x.status === 'complete').length;
   const p = t && participant(t);
   const ready = d.confirmed && completed < d.participants.length;
+  const wheelBusy=!!state.live?.wheel&&now()<state.live.wheel.finishAt;
+  const missing=state.turns.filter(x=>x.division===selectedDivision&&x.status==='complete'&&x.panel.some(id=>!Object.hasOwn(x.scores,id))).length;
   return `${title('Contest control','Draw, prepare and guide each speech.')}${divisionTabs()}
-    ${!d.confirmed ? `<div class="notice">Review participant names and the judging panel before the first draw. ${button('Review setup','tab',{tab:'setup'})}</div>` : ''}
+    ${!d.confirmed ? `<div class="notice">Review participant names and the judging panel before the first draw. ${button('Review setup','tab',{tab:'setup'})}</div>` : ''}${missing?`<div class="notice">${missing} completed speech${missing===1?' is':'es are'} still awaiting judge scores. You can continue drawing participants.</div>`:''}
     <div class="grid"><div><section class="card"><div class="card-head"><h2>On the floor</h2><span class="chip">${completed} / ${d.participants.length} completed</span></div>
       ${t ? `<div class="eyebrow">DIVISION ${t.division} · ${esc(p.group)}</div><div class="hero-name">${esc(p.name)}</div><small>${esc(p.fullName)}</small>
-      <hr class="sep">${t.topic ? `<div class="eyebrow">DRAWN TOPIC</div><p class="topic">${esc(t.topic.text)}</p>` : `<p class="muted">The participant is drawn. Select their topic next.</p>${button('Draw topic','draw-topic',{},'primary')}`}` : `<div class="empty"><span class="symbol">◎</span>${completed === d.participants.length ? 'All speeches in this division are complete.' : 'Ready for the next participant.'}</div>${button('Draw participant','draw-participant',{},'primary',!ready)}`}
+      <hr class="sep">${t.topic ? `<div class="eyebrow">DRAWN TOPIC</div><p class="topic">${esc(t.topic.text)}</p>` : `<p class="muted">The participant is drawn. Select their topic next.</p>${button('Draw topic','draw-topic',{'wheel-wait':'true'},'primary',wheelBusy)}`}` : `<div class="empty"><span class="symbol">◎</span>${completed === d.participants.length ? 'All speeches in this division are complete.' : 'Ready for the next participant.'}</div>${button('Draw participant','draw-participant',{},'primary',!ready)}`}
     </section>${t ? `<section class="card"><div class="card-head"><h2>Contest timer</h2><span class="chip">${esc(t.timer.phase)}</span></div><div class="row">${button('Preparation','phase',{phase:'preparation'},t.timer.phase === 'preparation' ? 'selected' : '',t.timer.running || !t.topic)}${button('Speech','phase',{phase:'speech'},t.timer.phase === 'speech' ? 'selected' : '',t.timer.running || !t.topic)}</div><div class="timer-box"><div>${phaseClock(t.timer)}<div class="timer-label">${t.timer.phase === 'speech' ? 'Green at 2:00 elapsed · limit 3:00' : 'One minute to prepare'}</div></div><div class="timer-controls">${button(t.timer.running ? 'Pause' : 'Start','timer',{operation:t.timer.running ? 'pause' : 'start'},'primary',!t.topic)}${button('Reset','timer-reset',{},'',!t.topic)}</div></div><small>The timer continues on all connected screens. Expiry does not submit scores.</small></section>` : ''}
-    <section class="card"><div class="card-head"><h2>Judging panel</h2><span class="chip">${t ? Object.keys(t.scores).length : 0} / ${t ? t.panel.length : panel(selectedDivision).length} submitted</span></div>${panel(selectedDivision).map(j => `<div class="row between" style="padding:10px 0"><span>${esc(j.name)}<br><small>${esc(j.description)}</small></span><span class="chip ${t?.scores[j.id] ? 'live' : ''}">${t?.scores[j.id] ? 'Submitted' : 'Waiting'}</span></div>`).join('')}${t ? `<hr class="sep">${button('Complete participant','complete',{},'primary',Object.keys(t.scores).length !== t.panel.length)}` : ''}</section></div>
-    <div><section class="card"><div class="card-head"><h2>Scene preview</h2><span class="chip">PRIVATE PREVIEW</span></div><div id="preview" class="preview">${stage(previewCue(),true)}</div><p class="smalltext muted" style="margin-top:12px">Draft changes stay in this preview until you take them live.</p><label>Scene<select id="scene">${Object.entries(scenes).map(([k,v]) => `<option value="${k}" ${draft.scene===k?'selected':''}>${v}</option>`).join('')}</select></label><label>Message<textarea id="scene-message" maxlength="1000" placeholder="Optional announcement or closing message">${esc(draft.message)}</textarea></label><div class="row between"><span class="not-saved" id="draft-status">Draft only</span>${button('Take live →','take-live',{},'gold')}</div></section>
-    <section class="card"><div class="card-head"><h2>Audience screens</h2><span class="chip live">${state.live ? 'SAVED LIVE SCENE' : 'STANDBY'}</span></div><p>${esc(state.live ? scenes[state.live.scene] : 'No scene taken live yet')}</p>${state.live ? `<small>Division ${esc(state.live.division)}${state.live.participant ? ' · '+esc(state.live.participant.name) : ''}</small>` : '<small>The school title appears until the first scene is taken live.</small>'}<hr class="sep"><a class="button" href="${link('audience')}" target="_blank" rel="noopener">Open audience screen ↗</a></section></div></div>`;
+    <section class="card"><div class="card-head"><h2>Judging panel</h2><span class="chip">${t ? Object.keys(t.scores).length : 0} / ${t ? t.panel.length : panel(selectedDivision).length} submitted</span></div>${panel(selectedDivision).map(j => `<div class="row between" style="padding:10px 0"><span>${esc(j.name)}<br><small>${esc(j.description)}</small></span><span class="chip ${t?.scores[j.id] ? 'live' : ''}">${t?.scores[j.id] ? 'Submitted' : 'Waiting'}</span></div>`).join('')}${t ? `<hr class="sep"><p class="smalltext muted">Complete the speech and continue. Unfinished score sheets stay available to the judges.</p>${button('Complete participant','complete',{},'primary',!t.topic)}` : ''}</section></div>
+    <div><section class="card"><div class="card-head"><h2>Scene preview</h2><span class="chip">${draft.followLive?'FOLLOWING LIVE':'PRIVATE PREVIEW'}</span></div><div id="preview" class="preview">${stage(previewCue(),true)}</div><p class="smalltext muted" style="margin-top:12px">Draws automatically show the wheel, then the current contestant. Other scene changes use Take live.</p><label>Scene<select id="scene">${Object.entries(scenes).map(([k,v]) => `<option value="${k}" ${draft.scene===k?'selected':''}>${v}</option>`).join('')}</select></label><label>Message<textarea id="scene-message" maxlength="1000" placeholder="Optional announcement or closing message">${esc(draft.message)}</textarea></label><div class="row between"><span class="not-saved" id="draft-status">${draft.followLive?'Following automatic draw':'Draft only'}</span>${button('Take live →','take-live',{},'gold')}</div></section>
+    <section class="card"><div class="card-head"><h2>Audience screens</h2><span class="chip live">${state.live ? 'SAVED LIVE SCENE' : 'STANDBY'}</span></div><p data-live-scene>${esc(state.live ? sceneNames[window.ContestWheel.resolve(state.live,now()).scene] : 'No scene taken live yet')}</p>${state.live ? `<small>Division ${esc(state.live.division)}</small>` : '<small>The school title appears until the first scene is taken live.</small>'}<hr class="sep"><a class="button" href="${link('audience')}" target="_blank" rel="noopener">Open audience screen ↗</a></section></div></div>`;
 }
 function previewCue() {
   if (!state || !draft) return null;
+  if(draft.followLive)return state.live;
   const d = state.divisions[selectedDivision], t = active();
   const cue = {scene:draft.scene, division:selectedDivision, label:d.label, message:draft.message};
   if (draft.scene === 'introduction') Object.assign(cue,{emcee:d.emcee,judges:panel(selectedDivision).map(j=>j.name)});
   if (draft.scene === 'participants') cue.participants = d.participants;
-  if (['participant_draw','topic_draw','preparation','speech'].includes(draft.scene) && t) {
+  if (['contestant','participant_draw','topic_draw','preparation','speech'].includes(draft.scene) && t) {
     cue.participant = participant(t); cue.turnId = t.id;
     if (draft.scene !== 'participant_draw') cue.topic = t.topic?.text;
     if (['preparation','speech'].includes(draft.scene)) cue.timer = t.timer;
@@ -158,17 +167,22 @@ function previewCue() {
 }
 function stage(cue, preview = false) {
   const settings = state?.settings || {title:'2nd Impromptu Speech Contest',stageLogo:'assets/logo-white.svg'};
-  const c = cue || {scene:'standby'};
+  const c = window.ContestWheel.resolve(cue,now()) || {scene:'standby'};
   const kicker = c.division ? `Division ${c.division} · ${c.label}` : 'Unidad Educativa Leonardo Da Vinci';
   let content = '';
   if (c.scene === 'standby') content = `<h1>${esc(settings.title)}</h1><p class="stage-sub">Unidad Educativa Leonardo Da Vinci<br>Manta, Ecuador</p>`;
   if (c.scene === 'introduction') content = `<h1>Division ${esc(c.division)}</h1><h2>${esc(c.label)}</h2><p class="stage-sub">Master of Ceremony · ${esc(c.emcee)}<br>${(c.judges||[]).map(esc).join(' · ')}</p>`;
   if (c.scene === 'participants') content = `<h2>Our participants</h2><div class="stage-rows">${(c.participants||[]).map(p=>`<div>${esc(p.name)}<small>${esc(p.group)}</small></div>`).join('')}</div>`;
-  if (['participant_draw','topic_draw','preparation','speech'].includes(c.scene)) {
+  if(c.wheel){
+    const revealed=now()>=c.wheel.endsAt;
+    content=`<div class="wheel-layout" data-wheel-cue="${esc(JSON.stringify(c))}"><div class="wheel-frame"><canvas class="wheel-canvas" width="1000" height="1000" aria-label="${c.wheel.kind==='participant'?'Participant names':'Numbered topic slots'}"></canvas><div class="wheel-pointer"></div><div class="wheel-hub"><img src="${esc(settings.stageLogo)}" alt=""></div></div><div class="wheel-detail"><div class="stage-kicker">${c.wheel.kind==='participant'?'Participant draw':'Topic draw'}</div><h1 data-wheel-name>${esc(revealed?c.after.participant.name:'Drawing…')}</h1><div class="stage-topic" data-wheel-topic>${esc(revealed?(c.after.topic||c.after.participant.group):'')}</div></div></div>`;
+  }
+  if (['contestant','participant_draw','topic_draw','preparation','speech'].includes(c.scene)) {
     if (c.scene === 'participant_draw') content += '<div class="draw-ring">◎</div><div class="stage-kicker">Participant draw</div>';
     if (c.scene === 'topic_draw') content += '<div class="stage-kicker">Topic draw</div>';
-    content += `<${c.scene==='participant_draw'?'h1':'h2'}>${esc(c.participant?.name || 'Draw a participant first')}</${c.scene==='participant_draw'?'h1':'h2'}>`;
-    if (c.scene === 'participant_draw') content += `<p class="stage-sub">${esc(c.participant?.group)}</p>`;
+    const bigName=c.scene==='participant_draw'||(c.scene==='contestant'&&!c.topic);
+    content += `<${bigName?'h1':'h2'}>${esc(c.participant?.name || 'Draw a participant first')}</${bigName?'h1':'h2'}>`;
+    if (c.scene === 'participant_draw'||(c.scene==='contestant'&&!c.topic)) content += `<p class="stage-sub">${esc(c.participant?.group)}</p>`;
     else content += `<div class="stage-topic">${esc(c.topic || 'Draw a topic first')}</div>`;
     if (['preparation','speech'].includes(c.scene) && c.timer) content += `<div class="stage-timer" data-timer="${esc(JSON.stringify(c.timer))}">${timerText(remaining(c.timer))}</div><p class="stage-sub">${c.scene === 'preparation' ? 'Preparation' : 'Speech'}</p>`;
   }
@@ -193,7 +207,7 @@ function results() {
   const ties = rows.some((r,i)=>i&&r.average===rows[i-1].average);
   return `${title('Scores & awards','Review all judge submissions before publishing.')}${divisionTabs()}<div class="row" style="margin-bottom:20px">${button('Export event JSON','export-json')}${button('Export score CSV','export-csv')}</div>${ties?'<div class="notice">There is a tied average. Tied participants share a place; no automatic tiebreak rule was supplied. Review before publishing awards.</div>':''}<section class="card"><div class="card-head"><h2>Division ${selectedDivision}</h2><span class="chip ${d.published?'live':''}">${d.published?'PUBLISHED':'UNPUBLISHED'}</span></div><div class="scroll"><table><thead><tr><th>Place</th><th>Participant</th>${panel(selectedDivision).map(j=>`<th>${esc(j.name)}</th>`).join('')}<th>Average / 10</th></tr></thead><tbody>${d.participants.map(p=>{
     const t=state.turns.find(t=>t.participantId===p.id&&t.division===selectedDivision); const rank=rows.find(r=>r.participantId===p.id);
-    return `<tr><td>${rank?.rank||'—'}</td><td><strong>${esc(p.name)}</strong><small>${t?.status==='complete'?'Complete':t?'In progress':'Not drawn'}</small></td>${panel(selectedDivision).map(j=>`<td>${t?.scores[j.id]?t.scores[j.id].values.reduce((a,b)=>a+b,0).toFixed(2):'—'}</td>`).join('')}<td class="admin-results">${rank?rank.average.toFixed(2):'—'}</td></tr>`;
+    return `<tr><td>${rank?.rank||'—'}</td><td><strong>${esc(p.name)}</strong><small>${t?.status==='complete'?(rank?'Scored':'Speech complete · awaiting scores'):t?'In progress':'Not drawn'}</small></td>${panel(selectedDivision).map(j=>`<td>${t?.scores[j.id]?t.scores[j.id].values.reduce((a,b)=>a+b,0).toFixed(2):'—'}</td>`).join('')}<td class="admin-results">${rank?rank.average.toFixed(2):'—'}</td></tr>`;
   }).join('')}</tbody></table></div><hr class="sep"><p class="smalltext muted">Publishing makes an immutable result snapshot available for leaderboard and awards scenes. You still choose when to take those scenes live.</p>${button(d.published?'Results published':`Publish Division ${selectedDivision} results`,'publish',{},'primary',!!d.published||rows.length!==d.participants.length)}</section><section class="card"><h2>Submitted score sheets</h2>${state.turns.filter(t=>t.division===selectedDivision&&Object.keys(t.scores).length).map(t=>`<details style="margin-bottom:14px"><summary>${esc(participant(t).name)} · ${Object.keys(t.scores).length} score sheets</summary>${Object.entries(t.scores).map(([id,score])=>`<p><strong>${esc(state.judges.find(j=>j.id===id)?.name)}</strong><br>${score.values.map((v,i)=>`${i+1}: ${v.toFixed(2)}`).join(' · ')}<br><small>${esc(score.note)}</small></p>`).join('')}</details>`).join('')||'<p class="muted">No submitted score sheets yet.</p>'}</section>`;
 }
 function settings() {
@@ -203,12 +217,13 @@ function settings() {
 function judgeView() {
   const j=state.judges.find(j=>j.id===judgeId), t=state.current;
   if (!j) return `<h1>Choose your judging identity</h1><p class="muted">Select your name. This identifies the score sheet you submit.</p><div class="card">${state.judges.map(j=>`<a class="button" style="margin:7px" href="${link('judge',{judge:j.id})}">${esc(j.name)} · ${j.divisions.join(', ')}</a>`).join('')}</div>`;
-  const identity=`<div class="judge-identity"><div class="eyebrow" style="color:#F2C94C">YOUR JUDGING IDENTITY</div><h2>${esc(j.name)}</h2><small>${esc(j.description)} · Divisions ${j.divisions.join(', ')} · Event ${esc(code)}</small></div><a class="top-link" href="${link('judge',{judge:''})}">Change selected judge</a>`;
+  const queue=state.queue||[],waiting=queue.filter(row=>!row.submitted).length;
+  const identity=`<div class="judge-identity"><div class="eyebrow" style="color:#F2C94C">YOUR JUDGING IDENTITY</div><h2>${esc(j.name)}</h2><small>${esc(j.description)} · Divisions ${j.divisions.join(', ')} · Event ${esc(code)}</small></div><a class="top-link" href="${link('judge',{judge:''})}">Change selected judge</a>${queue.length?`<section class="card judge-queue"><label>Participant score sheet<select id="judge-turn">${queue.map(row=>`<option value="${esc(row.id)}" ${t?.id===row.id?'selected':''}>Division ${esc(row.division)} · ${esc(row.name)} · ${row.submitted?'Submitted':row.status==='complete'?'Awaiting your score':'On stage'}</option>`).join('')}</select></label><small>${waiting} score sheet${waiting===1?'':'s'} awaiting your score. Completed speeches remain available.</small></section>`:''}`;
   if (!t) return `${identity}<section class="card" style="margin-top:20px"><div class="empty"><span class="symbol">◷</span>Waiting for a participant assigned to your panel.</div></section>`;
   if (!t.topic) return `${identity}<section class="card"><div class="eyebrow">DIVISION ${t.division}</div><div class="hero-name">${esc(t.participant.name)}</div><p class="muted">Waiting for the topic draw.</p></section>`;
   if (t.myScore) return `${identity}<section class="card" style="margin-top:20px"><div class="notice good">Your score is submitted and locked.</div><h2>${esc(t.participant.name)}</h2><p>${esc(t.topic.text)}</p><div class="hero-name">${t.myScore.values.reduce((a,b)=>a+b,0).toFixed(2)} / 10</div><p class="muted">Waiting for the next participant. Do not submit another score for this speech.</p></section>`;
   let saved={}; try{saved=JSON.parse(readLocal(`davinci-score-${state.generation}-${t.id}-${judgeId}`,'{}'));}catch{}
-  return `${identity}<section class="card" style="margin-top:20px"><div class="eyebrow">DIVISION ${t.division} · ${esc(t.participant.group)}</div><div class="hero-name">${esc(t.participant.name)}</div><small>${esc(t.participant.fullName)}</small><p class="topic">${esc(t.topic.text)}</p>${phaseClock(t.timer)}<p class="smalltext muted">Timer: ${esc(t.timer.phase)}. Judge time management using the rubric.</p><form id="score-form" data-turn="${t.id}"><h2>Score sheet</h2><p class="smalltext muted">Select one score for every criterion. Expand a criterion to see the program’s descriptors.</p>${state.criteria.map((c,i)=>`<div class="criterion"><div class="criterion-head"><span class="number">${String(i+1).padStart(2,'0')}</span><h3>${esc(c.name)}</h3></div><div class="score-options">${[[1,'Excellent'],[.75,'Good'],[.5,'Fair'],[.25,'Needs improvement']].map(([v,l])=>`<label><input type="radio" name="criterion-${i}" value="${v}" required ${Number(saved[i])===v?'checked':''}><span>${v.toFixed(2)}<small>${l}</small></span></label>`).join('')}</div><details><summary>Rubric descriptors</summary>${[[1,'Excellent'],[.75,'Good'],[.5,'Fair'],[.25,'Needs improvement']].map(([v,l])=>`<p><strong>${v.toFixed(2)} · ${l}:</strong> ${esc(c.descriptors[String(v)])}</p>`).join('')}</details></div>`).join('')}<label style="margin-top:20px">Private judge notes (optional)<textarea name="note" maxlength="1000">${esc(saved.note||'')}</textarea></label><div class="judge-total row between"><strong id="score-total">${scoreSummary(saved)}</strong><button type="submit" class="primary" ${busy?'disabled':''}>Review & submit score</button></div></form></section>`;
+  return `${identity}<section class="card" style="margin-top:20px">${t.status==='complete'?'<div class="notice">Speech completed. Your score sheet remains open while the contest continues.</div>':''}<div class="eyebrow">DIVISION ${t.division} · ${esc(t.participant.group)}</div><div class="hero-name">${esc(t.participant.name)}</div><small>${esc(t.participant.fullName)}</small><p class="topic">${esc(t.topic.text)}</p>${phaseClock(t.timer)}<p class="smalltext muted">Timer: ${esc(t.timer.phase)}. Judge time management using the rubric.</p><form id="score-form" data-turn="${t.id}"><h2>Score sheet</h2><p class="smalltext muted">Select one score for every criterion. Expand a criterion to see the program’s descriptors.</p>${state.criteria.map((c,i)=>`<div class="criterion"><div class="criterion-head"><span class="number">${String(i+1).padStart(2,'0')}</span><h3>${esc(c.name)}</h3></div><div class="score-options">${[[1,'Excellent'],[.75,'Good'],[.5,'Fair'],[.25,'Needs improvement']].map(([v,l])=>`<label><input type="radio" name="criterion-${i}" value="${v}" required ${Number(saved[i])===v?'checked':''}><span>${v.toFixed(2)}<small>${l}</small></span></label>`).join('')}</div><details><summary>Rubric descriptors</summary>${[[1,'Excellent'],[.75,'Good'],[.5,'Fair'],[.25,'Needs improvement']].map(([v,l])=>`<p><strong>${v.toFixed(2)} · ${l}:</strong> ${esc(c.descriptors[String(v)])}</p>`).join('')}</details></div>`).join('')}<label style="margin-top:20px">Private judge notes (optional)<textarea name="note" maxlength="1000">${esc(saved.note||'')}</textarea></label><div class="judge-total row between"><strong id="score-total">${scoreSummary(saved)}</strong><button type="submit" class="primary" ${busy?'disabled':''}>Review & submit score</button></div></form></section>`;
 }
 function scoreSummary(values) {
   const selected=Array.from({length:10},(_,i)=>Number(values[i])).filter(v=>[.25,.5,.75,1].includes(v));
@@ -221,7 +236,7 @@ function emceeView() {
 function render(force=false) {
   if (!state) return;
   if (role==='audience') {
-    const cue=state.live;
+    const cue=window.ContestWheel.resolve(state.live,now());
     const cueId=cue?.id||'standby';
     const settingsKey=JSON.stringify(state.settings);
     if (displayedCue!==cueId || force || displayedSettings!==settingsKey) {
@@ -246,6 +261,11 @@ function render(force=false) {
   if(busy)document.querySelectorAll('button[data-action],button[type=submit]').forEach(b=>b.disabled=true);
 }
 function tick() {
+  mountWheels();
+  if(role==='admin'){
+    document.querySelectorAll('[data-wheel-wait]').forEach(button=>button.disabled=busy||!!pending||!!state.live?.wheel&&now()<state.live.wheel.finishAt);
+    const label=document.querySelector('[data-live-scene]');if(label&&state?.live)label.textContent=sceneNames[window.ContestWheel.resolve(state.live,now()).scene];
+  }
   document.querySelectorAll('[data-timer]').forEach(n=>{
     let t=JSON.parse(n.dataset.timer);
     if(n.dataset.clockTurn){const current=role==='admin'?active():state?.current;if(current?.id===n.dataset.clockTurn)t=current.timer;}
@@ -255,6 +275,34 @@ function tick() {
     n.classList.toggle('overtime',value<0);
     n.classList.toggle('ready',t.phase==='speech'&&value>=0&&t.duration-value>=min);
   });
+}
+let wheelFrame=0;
+const wheelModels=new WeakMap();
+function mountWheels(){
+  const nodes=document.querySelectorAll('[data-wheel-cue]');
+  nodes.forEach(node=>{if(!wheelModels.has(node)){const cue=JSON.parse(node.dataset.wheelCue);wheelModels.set(node,cue);window.ContestWheel.paint(node.querySelector('canvas'),cue.wheel);}});
+  if(nodes.length&&!wheelFrame)wheelFrame=requestAnimationFrame(animateWheels);
+}
+function animateWheels(){
+  wheelFrame=0;
+  const nodes=document.querySelectorAll('[data-wheel-cue]');
+  const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
+  nodes.forEach(node=>{
+    const cue=wheelModels.get(node);if(!cue)return;
+    const at=now(),wheel=cue.wheel;
+    if(at>=wheel.finishAt){
+      const preview=!!node.closest('#preview');
+      node.closest('.stage').outerHTML=stage(cue.after,preview);
+      if(role==='audience')displayedCue=cue.after.id;
+      return;
+    }
+    node.querySelector('canvas').style.transform=`rotate(${window.ContestWheel.rotation(wheel,at,reduced)}deg)`;
+    if(at>=wheel.endsAt&&!node.dataset.revealed){
+      node.dataset.revealed='true';node.querySelector('[data-wheel-name]').textContent=cue.after.participant.name;
+      node.querySelector('[data-wheel-topic]').textContent=cue.after.topic||cue.after.participant.group;
+    }
+  });
+  if(document.querySelector('[data-wheel-cue]'))wheelFrame=requestAnimationFrame(animateWheels);
 }
 function connectionForm() {
   return `<form id="connection-form"><label>Event code<input name="code" value="${esc(code)}" placeholder="E.g. DAVINCI26" pattern="[A-Za-z0-9-]{4,12}" maxlength="12" required></label><details ${!apiBase?'open':''}><summary>Connection settings</summary><label>Public server URL<input name="server" value="${esc(apiBase)}" type="url" placeholder="https://contest-server.example.org"></label><small>Leave blank only when the server and preview use the same address.</small></details><button type="submit" class="primary" style="margin-top:16px">Connect to event</button></form>`;
@@ -320,6 +368,7 @@ document.addEventListener('click',event=>{
 });
 document.addEventListener('input',event=>{
   if(event.target.closest('#scene-message')||event.target.id==='scene'){
+    draft.followLive=false;
     draft.scene=document.querySelector('#scene').value;draft.message=document.querySelector('#scene-message').value;draft.division=selectedDivision;
     saveLocal(`davinci-draft-${state.generation}`,JSON.stringify(draft));
     document.querySelector('#preview').innerHTML=stage(previewCue(),true);tick();return;
@@ -333,7 +382,10 @@ document.addEventListener('input',event=>{
     document.querySelector('#score-total').textContent=scoreSummary(saved);
   }
 });
-document.addEventListener('change',event=>{if(event.target.id==='scene')event.target.dispatchEvent(new Event('input',{bubbles:true}));});
+document.addEventListener('change',event=>{
+  if(event.target.id==='scene')event.target.dispatchEvent(new Event('input',{bubbles:true}));
+  if(event.target.id==='judge-turn'){judgeTurnId=event.target.value;editing=false;refresh(true);}
+});
 document.addEventListener('submit',event=>{
   const form=event.target;if(!form.id)return;event.preventDefault();submitForm(form).catch(e=>toast(e.message,true));
 });

@@ -1,5 +1,14 @@
 # Verification record
 
+## Animated draw and judging update
+
+Verified on 13 November 2026, America/Bogota.
+
+- 31 automated tests pass, including automatic wheel publication and reveal, deterministic pointer alignment for pools of 1–100 entries, identical-retry preservation of the spin, topic-pool privacy, late judge submissions, judge queues, concurrent completion/scoring, and publication blocked by missing scores.
+- The updated Wix backend passes TypeScript checking and the production build.
+- Browser tests use a separate local contest with explicitly labelled preview participants. The participant and topic wheels appear without Take live, animate, land, and switch automatically to the selected contestant/topic. Completing a speech at 0/2 scores permits the next draw while preserving the earlier judge’s open draft and selected scores.
+- The current Wix event was read before deployment; it already had a participant in progress. These changes do not reset, complete, draw, score or otherwise alter that event as part of verification.
+
 Verified on 12 November 2026, America/Bogota.
 
 - 25 automated tests passed using synthetic participants and an in-memory repository. They cover simultaneous initialization/draws, unique topic/participant draws, score validation and duplicate rejection, concurrent judge submissions, lost-response retries, stale updates, private projections, timer recovery, publication, tied averages, bounded logo uploads, and idempotent archive/reset.

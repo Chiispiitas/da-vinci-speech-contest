@@ -6,11 +6,23 @@ export const timestamp=()=>Date.now()/1000;
 const uid=()=>crypto.randomUUID();
 export function text(value,max,label='Text',empty=false){check(typeof value==='string',`${label} must be text.`);value=value.trim();check((empty||value)&&value.length<=max,`${label} needs 1–${max} characters.`);return value;}
 const number=(v,min,max,label)=>{check(Number.isInteger(v)&&v>=min&&v<=max,`${label} must be ${min}–${max}.`);return v;};
-export const SCENES=['standby','introduction','participants','participant_draw','topic_draw','preparation','speech','announcement','leaderboard','awards','closing'];
+export const SCENES=['standby','introduction','participants','contestant','participant_draw','topic_draw','preparation','speech','announcement','leaderboard','awards','closing'];
 export const panel=(s,d)=>s.judges.filter(j=>j.divisions.includes(d));
 export const active=s=>s.turns.find(t=>t.id===s.active);
 export const participant=(s,t)=>s.divisions[t.division].participants.find(p=>p.id===t.participantId);
 export const remaining=(t,now=timestamp())=>t.running?t.endsAt-now:t.remaining;
+export const fullyScored=t=>t.panel.length>0&&t.panel.every(id=>Object.hasOwn(t.scores,id));
+export function drawScene(s,t,pool,kind){
+  const p=participant(s,t),d=s.divisions[t.division],id=uid(),startedAt=timestamp()+.8;
+  const entries=pool.map(row=>({id:row.id,label:kind==='participant'?row.name:`Topic ${String(d.topics.findIndex(topic=>topic.id===row.id)+1).padStart(2,'0')}`}));
+  const selectedId=kind==='participant'?t.participantId:t.topic.id;
+  const after={id:id+'-result',scene:'contestant',division:t.division,label:d.label,turnId:t.id,participant:{name:p.name,group:p.group}};
+  if(kind==='topic')after.topic=t.topic.text;
+  return {id,scene:kind+'_wheel',division:t.division,label:d.label,turnId:t.id,
+    wheel:{id,kind,entries,selectedIndex:entries.findIndex(row=>row.id===selectedId),startedAt,endsAt:startedAt+6,finishAt:startedAt+8,rotations:6},
+    after};
+}
+export const visibleScene=(cue,at=timestamp())=>cue?.wheel&&at>=cue.wheel.finishAt?clone(cue.after):clone(cue);
 const randomPick=rows=>{
   // Rejection sampling avoids modulo bias.
   const max=Math.floor(0x100000000/rows.length)*rows.length;
@@ -26,7 +38,7 @@ export function initial(seed,code){
   }};
 }
 export function standings(s,d){
-  const rows=s.turns.filter(t=>t.division===d&&t.status==='complete').map(t=>{
+  const rows=s.turns.filter(t=>t.division===d&&t.status==='complete'&&fullyScored(t)).map(t=>{
     const p=participant(s,t);return {participantId:p.id,name:p.name,fullName:p.fullName,group:p.group,average:Object.values(t.scores).reduce((sum,v)=>sum+v.values.reduce((a,b)=>a+b,0),0)/t.panel.length};
   }).sort((a,b)=>b.average-a.average||a.name.localeCompare(b.name));
   let last=null,rank=0;rows.forEach((r,i)=>{if(r.average!==last)rank=i+1;r.rank=rank;last=r.average;});return rows;
@@ -37,11 +49,12 @@ export function scene(s,data){
   const cue={id:uid(),scene:name,division:div,label:d.label,message:text(data.message||'',1000,'Message',true)};
   if(name==='introduction')Object.assign(cue,{emcee:d.emcee,judges:panel(s,div).map(j=>j.name)});
   if(name==='participants')cue.participants=d.participants.map(p=>({name:p.name,group:p.group}));
-  if(['participant_draw','topic_draw','preparation','speech'].includes(name)){
+  if(['contestant','participant_draw','topic_draw','preparation','speech'].includes(name)){
     const t=active(s);check(t&&t.division===div,'Draw a participant in this division first.');
     check(data.turnId===t.id,'The participant changed since this preview. Review it before taking live.',409);
     const p=participant(s,t);Object.assign(cue,{turnId:t.id,participant:{name:p.name,group:p.group}});
-    if(name!=='participant_draw'){check(t.topic,'Draw the topic first.');cue.topic=t.topic.text;}
+    if(name==='contestant'){if(t.topic)cue.topic=t.topic.text;}
+    else if(name!=='participant_draw'){check(t.topic,'Draw the topic first.');cue.topic=t.topic.text;}
     if(['preparation','speech'].includes(name)){check(t.timer.phase===name,'Select the matching timer phase first.');cue.timer=clone(t.timer);}
   }
   if(['leaderboard','awards'].includes(name)){
@@ -50,20 +63,24 @@ export function scene(s,data){
   }
   return cue;
 }
-export function audience(s){
+export function audience(s,at=timestamp()){
   const settings=Object.fromEntries(['school','title','stageLogo','accent','highlight','transition','minimumSeconds','speechSeconds'].map(k=>[k,s.settings[k]]));
-  const cue=clone(s.live);
+  const cue=visibleScene(s.live,at);
   if(cue&&['preparation','speech'].includes(cue.scene)){
     const t=s.turns.find(t=>t.id===cue.turnId);
     if(t?.timer.phase===cue.scene)cue.timer=clone(t.timer);
   }
   return {revision:s.revision,generation:s.generation,serverNow:timestamp(),settings,live:cue};
 }
-export function project(s,role='admin',judgeId){
+export function project(s,role='admin',judgeId,turnId){
   if(role==='audience')return audience(s);
   const base={code:s.code,generation:s.generation,revision:s.revision,serverNow:timestamp(),settings:clone(s.settings)};
   if(role==='judge'){
-    const t=active(s);return {...base,criteria:clone(s.criteria),judges:clone(s.judges),current:t&&t.panel.includes(judgeId)?{
+    const eligible=s.turns.filter(t=>t.panel.includes(judgeId)&&t.topic);
+    const pending=eligible.filter(t=>!Object.hasOwn(t.scores,judgeId));
+    const onStage=active(s);
+    const t=eligible.find(t=>t.id===turnId)||pending[0]||(onStage?.panel.includes(judgeId)?onStage:null)||eligible.at(-1);
+    return {...base,criteria:clone(s.criteria),judges:clone(s.judges),queue:eligible.map(t=>({id:t.id,division:t.division,name:participant(s,t).name,status:t.status,submitted:Object.hasOwn(t.scores,judgeId)})),current:t?{
       id:t.id,division:t.division,participant:clone(participant(s,t)),topic:clone(t.topic),timer:clone(t.timer),myScore:clone(t.scores[judgeId]||null),status:t.status
     }:null};
   }
@@ -103,11 +120,11 @@ export function apply(s,action,data,seed){
     check(!t,'A participant is already active. Complete that turn first.',409);check(div===s.division,'Select this division first.');check(d.confirmed,'Review names and confirm this panel first.');check(!d.published,'This division’s results are already published.');
     const used=new Set(s.turns.filter(t=>t.division===div).map(t=>t.participantId)),pool=d.participants.filter(p=>!used.has(p.id));check(pool.length,'All participants in this division have spoken.');
     const turn={id:uid(),division:div,participantId:randomPick(pool).id,topic:null,scores:{},panel:panel(s,div).map(j=>j.id),status:'active',drawnAt:timestamp(),timer:{phase:'preparation',duration:s.settings.prepSeconds,remaining:s.settings.prepSeconds,running:false,endsAt:null}};
-    s.turns.push(turn);s.active=turn.id;
+    s.turns.push(turn);s.active=turn.id;s.live=drawScene(s,turn,pool,'participant');
   }else if(action==='draw_topic'){
     check(t&&t.division===div&&!t.topic,'Draw one topic for the current participant only.',409);
     check(data.turnId===t.id,'The active participant changed.',409);
-    const used=new Set(s.turns.filter(x=>x.division===div&&x.topic).map(x=>x.topic.id)),pool=d.topics.filter(x=>!used.has(x.id));check(pool.length,'No unused topics remain.');t.topic=clone(randomPick(pool));
+    const used=new Set(s.turns.filter(x=>x.division===div&&x.topic).map(x=>x.topic.id)),pool=d.topics.filter(x=>!used.has(x.id));check(pool.length,'No unused topics remain.');t.topic=clone(randomPick(pool));s.live=drawScene(s,t,pool,'topic');
   }else if(action==='timer'){
     check(t&&t.topic,'Draw the topic before operating the timer.');check(data.turnId===t.id,'The active participant changed.',409);const timer=t.timer,op=data.operation;
     if(op==='phase'){
@@ -119,12 +136,13 @@ export function apply(s,action,data,seed){
     else if(op==='reset'){check(data.confirm===true,'Confirm resetting the timer.');Object.assign(timer,{remaining:timer.duration,running:false,endsAt:null});}
     else throw new Problem('Unknown timer operation.');
   }else if(action==='score'){
-    check(t&&data.turnId===t.id&&t.topic,'This participant is no longer accepting scores.',409);check(t.panel.includes(data.judgeId),'This judge is not on the current panel.');check(!t.scores[data.judgeId],'This judge’s score is already submitted and locked.',409);
+    const target=s.turns.find(turn=>turn.id===data.turnId);
+    check(target&&target.topic&&!s.divisions[target.division].published,'This participant is no longer accepting scores.',409);check(target.panel.includes(data.judgeId),'This judge is not on this participant’s panel.');check(!Object.hasOwn(target.scores,data.judgeId),'This judge’s score is already submitted and locked.',409);
     const values=data.values;check(Array.isArray(values)&&values.length===10&&values.every(v=>typeof v==='number'&&[.25,.5,.75,1].includes(v)),'Select 0.25, 0.50, 0.75 or 1.00 for each of the ten criteria.');
     check(data.confirmIdentity===data.judgeId,'Confirm the selected judging identity before submitting.');
-    t.scores[data.judgeId]={values:[...values],note:text(data.note||'',1000,'Notes',true),at:timestamp()};
+    target.scores[data.judgeId]={values:[...values],note:text(data.note||'',1000,'Notes',true),at:timestamp()};
   }else if(action==='complete'){
-    check(t&&data.turnId===t.id,'The active participant changed.',409);check(Object.keys(t.scores).length===t.panel.length,'Wait until every assigned judge has submitted.');
+    check(t&&data.turnId===t.id,'The active participant changed.',409);check(t.topic,'Draw the participant’s topic before completing their speech.');
     if(t.timer.running)Object.assign(t.timer,{remaining:remaining(t.timer),running:false,endsAt:null});Object.assign(t,{status:'complete',completedAt:timestamp()});s.active=null;
   }else if(action==='take_live')s.live=scene(s,data);
   else if(action==='publish'){
@@ -166,7 +184,8 @@ export class ContestService{
       const s=await this.read(code);
       if(Object.hasOwn(s.receipts,requestId)){check(s.receipts[requestId]===hash,'This request ID was already used for another action.',409);return s;}
       check(payload.generation===s.generation,'This is a different event. Reconnect before continuing.',409);
-      if(payload.action!=='score')check(Number.isInteger(payload.revision)&&payload.revision===s.revision,'The event changed on another screen. Review the latest state and try again.',409);
+      const mergeable=['score','complete'].includes(payload.action);
+      if(!mergeable)check(Number.isInteger(payload.revision)&&payload.revision===s.revision,'The event changed on another screen. Review the latest state and try again.',409);
       check(payload.data&&typeof payload.data==='object'&&!Array.isArray(payload.data),'Action data must be an object.');
       const seed=payload.action==='reset'?await this.repo.program():null;
       apply(s,payload.action,payload.data,seed);s.revision++;s.receipts[requestId]=hash;
@@ -175,7 +194,7 @@ export class ContestService{
       try{await this.repo.insert(s,payload.action);return s;}catch(e){
         const latest=await this.repo.latest();
         if(!latest||latest.revision<s.revision)throw e;
-        if(payload.action!=='score'&&!Object.hasOwn(latest.receipts,requestId))throw new Problem('Another screen saved first. Review the latest state before trying again.',409);
+        if(!mergeable&&!Object.hasOwn(latest.receipts,requestId))throw new Problem('Another screen saved first. Review the latest state before trying again.',409);
       }
     }throw new Problem('Other judges are saving at the same time. Retry this same submission.',503);
   }

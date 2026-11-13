@@ -17,7 +17,7 @@ export const ALL:APIRoute=async({request,params,url})=>{
     if(request.method==='GET'){
       if(route==='session'){const state=await repository.latest();return response(state?{initialized:true,code:state.code}:{initialized:false});}
       const state=await service.read(code);
-      if(['admin','judge','emcee','audience'].includes(route||''))return response(project(state,route,url.searchParams.get('judge')));
+      if(['admin','judge','emcee','audience'].includes(route||''))return response(project(state,route,url.searchParams.get('judge'),url.searchParams.get('turn')));
       if(route==='export')return response(project(state));
       if(route==='archives')return response(state.archives.map(({id,created}:any)=>({id,created})));
       if(route==='archive'){
