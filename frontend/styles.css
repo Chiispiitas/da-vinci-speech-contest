@@ -57,3 +57,5 @@ input,select,textarea{min-width:0;max-width:100%}
 .preview .stage-body .stage-rows{font-size:1.8cqw;gap:.5cqw}
 .preview .stage-body .stage-rows div{padding:.5cqw}
 .preview .stage-body .stage-rows.results.results-grid{font-size:1.7cqw}
+
+.role-card b{margin-top:auto;padding-top:14px}
