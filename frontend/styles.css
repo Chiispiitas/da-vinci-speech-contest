@@ -4,3 +4,56 @@
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;transition:none!important}}@media(max-width:1100px){.content{padding:26px 22px}.layout{grid-template-columns:180px minmax(0,1fr)}.sidebar{padding:22px 10px}.grid{grid-template-columns:1fr}.role-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.preview .stage{min-height:0}}@media(max-width:650px){.header{height:auto;padding:15px 18px}.brand img{width:140px}.brand span{display:none}.layout{display:block}.sidebar{flex-direction:row;overflow:auto;border-right:0;border-bottom:1px solid var(--line);padding:8px}.sidebar .side-label,.sidebar .foot{display:none}.sidebar button{white-space:nowrap;font-size:12px;padding:9px 13px}.content{padding:24px 16px}.title-row{align-items:flex-start;margin-bottom:20px}.title-row h1{font-size:27px}.title-row p{font-size:12px}.session-tag{font-size:10px;padding:9px}.session-tag b{display:block;margin:5px 0 0}.division-tabs{gap:6px}.division-tabs button{min-width:0;flex:1;padding:10px}.division-tabs small{display:none!important}.card{padding:18px}.form-grid{grid-template-columns:1fr}.home{padding:38px 20px}.role-grid{gap:10px}.role-card{padding:20px 15px}.role-card h2{font-size:18px}.stage{padding:16vh 7vw 10vh}.stage-logo{width:160px;height:60px}.stage-rows{font-size:16px;gap:4px}.stage-rows div{padding:6px}.stage-topic{font-size:25px}.score-options{gap:5px}.score-options small{font-size:9px}.judge-wrap{padding:24px 14px}.timer-controls button{font-size:12px;padding:9px}.schedule-row time{min-width:100px}.schedule-row{font-size:12px}.connection{font-size:10px}}
 .stage-rows.results.results-grid{grid-template-columns:repeat(2,minmax(0,1fr));font-size:clamp(18px,2vw,30px)}.stage-rows.results.results-grid div{gap:12px}.stage-rows.results.results-grid span{font-size:.7em;white-space:nowrap}.preview .stage .results-grid{font-size:1.7cqw}
 .wheel-layout{display:flex;align-items:center;justify-content:center;gap:4vw;width:100%;max-width:1500px;margin:28px 0 0}.wheel-frame{position:relative;width:min(61vh,48vw);height:min(61vh,48vw);flex-shrink:0}.wheel-canvas{width:100%;height:100%;will-change:transform}.wheel-pointer{position:absolute;top:0;left:50%;transform:translate(-50%,-20%);width:0;height:0;border-left:17px solid transparent;border-right:17px solid transparent;border-top:33px solid var(--gold);filter:drop-shadow(0 3px 2px #0006)}.wheel-hub{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:24%;height:24%;border:4px solid var(--gold);border-radius:50%;background:#0e2c55;display:grid;place-items:center}.wheel-hub img{width:85%;height:55%;object-fit:contain}.wheel-detail{width:42%;text-align:left}.wheel-detail h1{font-size:clamp(28px,3.8vw,58px)}.wheel-detail .stage-topic{font-size:clamp(20px,2.2vw,36px)}.wheel-detail .stage-kicker{font-size:13px}.judge-queue{margin:20px 0}.judge-queue label{margin-bottom:10px}.preview .wheel-layout{gap:3cqw;margin:2cqw 0 0}.preview .wheel-frame{width:30cqw;height:30cqw}.preview .wheel-pointer{border-left-width:1.2cqw;border-right-width:1.2cqw;border-top-width:2.4cqw}.preview .wheel-hub{border-width:1px}.preview .wheel-detail h1{font-size:4cqw}.preview .wheel-detail .stage-topic{font-size:2.5cqw}.preview .wheel-detail .stage-kicker{font-size:1.7cqw}@media(max-width:650px){.wheel-layout{flex-direction:column;gap:20px;margin-top:10px}.wheel-frame{width:min(42vh,75vw);height:min(42vh,75vw)}.wheel-detail{width:100%;text-align:center}.wheel-detail h1{font-size:28px}.wheel-detail .stage-topic{font-size:20px}.preview .wheel-layout{flex-direction:row;gap:3cqw}.preview .wheel-detail{width:42%;text-align:left}}
+
+/* Keep branding, scene content and footer in separate layout rows at every size. */
+.stage{height:100vh;height:100svh;min-height:0;display:grid;grid-template-rows:auto minmax(0,1fr) auto;grid-template-columns:minmax(0,1fr);align-items:stretch;justify-content:stretch;gap:2vh;padding:3vh 5vw;container-type:inline-size}
+.stage-header{display:grid;grid-template-columns:minmax(0,24%) minmax(0,1fr);align-items:center;gap:5%;width:100%}
+.stage-header .stage-logo{position:static;width:100%;height:8cqw;max-height:80px;object-position:left center}
+.stage-header .stage-kicker{margin:0;text-align:right;font-size:clamp(10px,1.25cqw,20px);line-height:1.6;letter-spacing:.18em;overflow-wrap:anywhere}
+.stage-body{min-width:0;min-height:0;width:100%;height:100%;overflow:auto;display:flex;flex-direction:column;align-items:center;justify-content:safe center;gap:0;scrollbar-width:thin}
+.stage-body>*{flex-shrink:0;max-width:100%}
+.stage-footer{position:static;max-width:100%;font-size:clamp(10px,1.1cqw,17px);line-height:1.4;overflow-wrap:anywhere;letter-spacing:.06em}
+.stage-body .wheel-layout{margin:0;gap:4%;padding-top:2%;padding-bottom:2%}
+.wheel-frame{width:min(54vh,42vw);height:min(54vh,42vw)}
+.preview .stage{padding:3%;gap:1.5cqw}
+.preview .stage .stage-header .stage-logo{width:100%;height:7cqw;max-height:none}
+.preview .stage .stage-header .stage-kicker{font-size:1.25cqw;line-height:1.6}
+.preview .stage .stage-footer{font-size:1.3cqw}
+.preview .stage-body h1,.preview .stage-body h2{margin-bottom:1.5cqw}
+.preview .stage-body .stage-topic{margin:1cqw 0;line-height:1.3}
+.preview .stage-body .stage-sub{margin:1cqw 0;line-height:1.5}
+.preview .stage-body .stage-timer{margin-top:1cqw}
+.preview .stage-body .stage-kicker{margin-bottom:1.5cqw;letter-spacing:.18em}
+.preview .stage-body .stage-rows{gap:.5cqw}
+.preview .stage-body .stage-rows div{padding:.5cqw}
+.preview .stage-body .stage-rows.results div{gap:1cqw}
+.preview .stage-body .stage-rows small{margin-top:.4cqw}
+/* Allow long names and controls to wrap instead of expanding their cards. */
+.card,.card-head>*,.title-row>*,.brand,.grid>*,.row>*,.timer-box>*{min-width:0}
+.card-head,.timer-box{flex-wrap:wrap;gap:12px}
+.row>*{flex-shrink:1;max-width:100%}
+button,.button,.chip,.hero-name,.eyebrow,.judge-identity,.notice,.stage-sub{overflow-wrap:anywhere}
+button,.button{text-align:center;white-space:normal}
+.chip{white-space:normal;line-height:1.4}
+input,select,textarea{min-width:0;max-width:100%}
+.header{height:auto;min-height:88px}.connection{flex-shrink:0}.brand a{flex-shrink:0}
+.stage-rows.results div b:nth-child(2){min-width:0}.stage-rows.results span{flex-shrink:0}
+@media(max-width:650px){
+ .stage{padding:3vh 5vw;gap:2vh}.stage-header{grid-template-columns:28% minmax(0,1fr)}
+ .stage-header .stage-logo{height:12cqw}.stage-header .stage-kicker{font-size:clamp(9px,2cqw,13px);letter-spacing:.1em}
+ .stage-footer{font-size:10px}.stage-body .wheel-layout{gap:14px}.wheel-frame{width:min(38vh,65vw);height:min(38vh,65vw)}
+ .preview .stage-header{grid-template-columns:24% minmax(0,1fr)}
+ .preview .stage-body .wheel-layout{gap:3cqw}.preview .wheel-frame{width:30cqw;height:30cqw}
+ .title-row{flex-wrap:wrap;gap:12px}.session-tag{white-space:normal}.timer-box{align-items:flex-start}
+ .score-options small{overflow-wrap:anywhere;line-height:1.3}.judge-total{gap:12px}.judge-total button{flex:1 1 160px}
+ .stage-rows.results.results-grid{grid-template-columns:1fr}.preview .stage-rows.results.results-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+
+@media(max-width:650px){.sidebar{align-items:center}.sidebar>*{flex:0 0 auto}.sidebar .button{white-space:nowrap}.sidebar button,.sidebar .button{min-height:44px}}
+
+.stage-body .stage-rows{font-size:clamp(16px,1.65cqw,28px);gap:8px;line-height:1.3}
+.stage-body .stage-rows div{padding:8px 10px}
+.stage-body .stage-rows.results.results-grid{font-size:clamp(16px,1.6cqw,27px)}
+.preview .stage-body .stage-rows{font-size:1.8cqw;gap:.5cqw}
+.preview .stage-body .stage-rows div{padding:.5cqw}
+.preview .stage-body .stage-rows.results.results-grid{font-size:1.7cqw}

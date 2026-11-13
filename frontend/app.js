@@ -193,7 +193,7 @@ function stage(cue, preview = false) {
   if (c.scene === 'announcement') content = `<div class="stage-topic">${esc(c.message || 'Announcement')}</div>`;
   if (c.scene === 'closing') content = `<h1>${esc(c.message || 'Thank you for participating')}</h1><p class="stage-sub">${esc(settings.title)}</p>`;
   if (['leaderboard','awards'].includes(c.scene)) content = `<h2>${c.scene==='awards'?'Awards':'Published results'}</h2>${c.results ? `<div class="stage-rows results ${c.results.length>6?'results-grid':''}">${c.results.map(r=>`<div><b>${r.rank}</b><b>${esc(r.name)}</b><span>${r.average.toFixed(2)} / 10</span></div>`).join('')}</div>` : '<p class="stage-sub">Results have not been published.</p>'}`;
-  return `<section class="stage" data-turn="${esc(c.turnId||'')}" data-wheel-id="${esc(c.wheel?.id||'')}"><img class="stage-logo" src="${esc(settings.stageLogo)}" alt="Leonardo Da Vinci"><div class="stage-kicker">${esc(kicker)}</div>${content}<div class="stage-footer">${preview ? 'PREVIEW · ' : ''}${esc(settings.title)}</div></section>`;
+  return `<section class="stage" data-turn="${esc(c.turnId||'')}" data-wheel-id="${esc(c.wheel?.id||'')}"><header class="stage-header"><img class="stage-logo" src="${esc(settings.stageLogo)}" alt="Leonardo Da Vinci"><div class="stage-kicker">${esc(kicker)}</div></header><div class="stage-body">${content}</div><div class="stage-footer">${preview ? 'PREVIEW · ' : ''}${esc(settings.title)}</div></section>`;
 }
 function setup() {
   const d = state.divisions[selectedDivision], locked = state.turns.some(t=>t.division===selectedDivision);

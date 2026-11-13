@@ -34,3 +34,14 @@ Verified on 12 November 2026, America/Bogota.
 Compatible dependency fixes were applied and unused template code, React styling dependencies and the CLI dependency were removed. The final npm audit reports one underlying high-severity Zod advisory, propagated through four packages in Wix’s Astro/dashboard feedback tooling. npm proposes a breaking Wix integration downgrade; that was not applied. Contest input uses explicit bounded validation and does not invoke Zod. This does not establish that the upstream issue is harmless; review the Wix integration when a compatible upstream fix is available.
 
 Advisory: https://github.com/advisories/GHSA-mrhx-c7xc-m3w5
+
+
+## Responsive layout review — 13 November 2026
+
+- Fixed the overlapping stage logo and division heading by separating the header, scene body and footer into grid rows. Branding uses the preview container dimensions rather than the browser viewport.
+- Reviewed all six Admin pages at desktop and phone widths, plus the home, judge and emcee pages at 375, 768 and 1280 pixels. No page-wide horizontal overflow was found after fixes. Tables and the mobile navigation retain their own horizontal scrolling.
+- Fixed mobile navigation links collapsing into tall narrow columns, wrapping card headings and controls, long names, score option labels, and the sticky judge total. Opened the score confirmation dialog on a phone-sized viewport.
+- Exercised all 14 audience scenes with synthetic long names and prompts at 1280×720, 1920×1080 and 375×812. Checked branding/body/footer separation and horizontal overflow. Reduced participant/results row spacing to fit ten entries on a 720p screen.
+- Checked all scenes in 300, 400 and 1100 pixel-wide previews. All 56 final full-screen/preview combinations at 720p passed the geometry and content-fit checks before publication.
+- Verified both prepared wheel previews remain stationary until Take live. All 35 contest tests pass; frontend JavaScript syntax check passes.
+- Test contest and layout fixtures were local and synthetic. No production contest draws, scores, scene changes or resets were performed during this review. The temporary layout fixture is excluded from the published frontend.
