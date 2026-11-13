@@ -97,3 +97,7 @@ test('reset archives the preceding revision, rotates generation and rejects old 
 test('settings reject arbitrary URLs, scripts, unknown fields and invalid timing',async()=>{
   const {service}=await context();for(const settings of [{stageLogo:'https://attacker.example/logo.svg'},{accent:'red'},{school:'Other school'},{minimumSeconds:200,speechSeconds:180}])await assert.rejects(command(service,'settings',{settings}),{status:422});assert.equal((await service.read('TEST26')).settings.minimumSeconds,120);
 });
+test('large uploaded logos are rejected and a reset retry archives only once',async()=>{
+  const {service}=await context();await assert.rejects(command(service,'settings',{settings:{logo:'data:image/png;base64,'+'A'.repeat(50000)}}),{status:422});
+  const reset=await payload(service,'reset',{confirm:'RESET TEST26'});await service.command('TEST26',reset);await service.command('TEST26',reset);const s=await service.read('TEST26');assert.equal(s.archives.length,1);assert.equal(Object.keys(s.receipts).length,1);
+});

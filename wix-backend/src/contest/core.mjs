@@ -137,11 +137,11 @@ export function apply(s,action,data,seed){
       if(['prepSeconds','speechSeconds','minimumSeconds'].includes(k)){check(!s.turns.length,'Timing rules are fixed after the first draw.');s.settings[k]=number(v,1,3600,'Duration');}
       else if(['accent','highlight'].includes(k)){check(typeof v==='string'&&/^#[0-9a-f]{6}$/i.test(v),'Choose a six-digit colour.');s.settings[k]=v;}
       else if(k==='transition'){check(['none','fade','logo'].includes(v),'Choose none, fade or logo.');s.settings[k]=v;}
-      else{const v2=text(v,k==='title'?120:200000,k);if(k!=='title')check(['assets/logo-blue.svg','assets/logo-white.svg','assets/anniversary.png'].includes(v2)||/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(v2),'Use a bundled logo or upload a PNG, JPEG or WebP.');s.settings[k]=v2;}
+      else{const v2=text(v,k==='title'?120:44000,k);if(k!=='title')check(['assets/logo-blue.svg','assets/logo-white.svg','assets/anniversary.png'].includes(v2)||/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(v2),'Use a bundled logo or upload a small PNG, JPEG or WebP.');s.settings[k]=v2;}
     }check(s.settings.minimumSeconds<=s.settings.speechSeconds,'Minimum speech time cannot exceed the maximum.');
   }else if(action==='reset'){
     check(data.confirm==='RESET '+s.code,'Type RESET followed by the current event code.');
-    const replacement=initial(seed,s.code);replacement.revision=s.revision;replacement.settings=clone(s.settings);replacement.receipts=clone(s.receipts);
+    const replacement=initial(seed,s.code);replacement.revision=s.revision;replacement.settings=clone(s.settings);
     replacement.archives=[...s.archives,{id:String(s.revision),created:timestamp(),generation:s.generation}];
     for(const key of Object.keys(s))delete s[key];Object.assign(s,replacement);
   }else throw new Problem('Unknown action.',404);

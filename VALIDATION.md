@@ -2,7 +2,7 @@
 
 Verified on 12 November 2026, America/Bogota.
 
-- 24 automated tests passed using synthetic participants and an in-memory repository. They cover simultaneous initialization/draws, unique topic/participant draws, score validation and duplicate rejection, concurrent judge submissions, lost-response retries, stale updates, private projections, timer recovery, publication, tied averages, and archive/reset.
+- 25 automated tests passed using synthetic participants and an in-memory repository. They cover simultaneous initialization/draws, unique topic/participant draws, score validation and duplicate rejection, concurrent judge submissions, lost-response retries, stale updates, private projections, timer recovery, publication, tied averages, bounded logo uploads, and idempotent archive/reset.
 - The Wix backend passed TypeScript checking and the production build.
 - A live Wix CMS rehearsal used explicitly labelled rehearsal participants and judges. Draws, idempotent retries, timer phases, audience filtering, concurrent judge submissions, the expected 8.75 average, explicit publication, awards, export, archive download and reset passed. The original school roster and panels were restored with zero active draws and scores. One clearly labelled rehearsal archive remains available in Admin.
 - The GitHub Pages frontend was opened against the live Wix backend. Initialization, private preview and Take live were checked in the browser.

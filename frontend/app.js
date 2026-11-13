@@ -339,7 +339,7 @@ document.addEventListener('submit',event=>{
 });
 async function fileData(file) {
   if(!file||!file.size)return null;
-  if(!['image/png','image/jpeg','image/webp'].includes(file.type)||file.size>140000)throw new Error('Use a PNG, JPEG or WebP logo smaller than 140 KB.');
+  if(!['image/png','image/jpeg','image/webp'].includes(file.type)||file.size>32000)throw new Error('Use a PNG, JPEG or WebP logo smaller than 32 KB, or choose a bundled official logo.');
   return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=reject;r.readAsDataURL(file);});
 }
 async function submitForm(form) {
