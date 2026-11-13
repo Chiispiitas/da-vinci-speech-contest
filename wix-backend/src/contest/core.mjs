@@ -76,7 +76,7 @@ export function project(s,role='admin',judgeId,turnId){
   if(role==='audience')return audience(s);
   const base={code:s.code,generation:s.generation,revision:s.revision,serverNow:timestamp(),settings:clone(s.settings)};
   if(role==='judge'){
-    const eligible=s.turns.filter(t=>t.panel.includes(judgeId)&&t.topic);
+    const eligible=s.turns.filter(t=>t.status!=='cancelled'&&t.panel.includes(judgeId)&&t.topic);
     const pending=eligible.filter(t=>!Object.hasOwn(t.scores,judgeId));
     const onStage=active(s);
     const t=eligible.find(t=>t.id===turnId)||pending[0]||(onStage?.panel.includes(judgeId)?onStage:null)||eligible.at(-1);
@@ -118,13 +118,36 @@ export function apply(s,action,data,seed){
     }s.judges=parsed;
   }else if(action==='draw_participant'){
     check(!t,'A participant is already active. Complete that turn first.',409);check(div===s.division,'Select this division first.');check(d.confirmed,'Review names and confirm this panel first.');check(!d.published,'This division’s results are already published.');
-    const used=new Set(s.turns.filter(t=>t.division===div).map(t=>t.participantId)),pool=d.participants.filter(p=>!used.has(p.id));check(pool.length,'All participants in this division have spoken.');
+    const used=new Set(s.turns.filter(t=>t.division===div&&t.status!=='cancelled').map(t=>t.participantId)),pool=d.participants.filter(p=>!used.has(p.id));check(pool.length,'All participants in this division have spoken.');
     const turn={id:uid(),division:div,participantId:randomPick(pool).id,topic:null,scores:{},panel:panel(s,div).map(j=>j.id),status:'active',drawnAt:timestamp(),timer:{phase:'preparation',duration:s.settings.prepSeconds,remaining:s.settings.prepSeconds,running:false,endsAt:null}};
     s.turns.push(turn);s.active=turn.id;s.live=drawScene(s,turn,pool,'participant');
   }else if(action==='draw_topic'){
     check(t&&t.division===div&&!t.topic,'Draw one topic for the current participant only.',409);
     check(data.turnId===t.id,'The active participant changed.',409);
-    const used=new Set(s.turns.filter(x=>x.division===div&&x.topic).map(x=>x.topic.id)),pool=d.topics.filter(x=>!used.has(x.id));check(pool.length,'No unused topics remain.');t.topic=clone(randomPick(pool));s.live=drawScene(s,t,pool,'topic');
+    const used=new Set(s.turns.filter(x=>x.division===div&&x.status!=='cancelled'&&x.topic).map(x=>x.topic.id)),pool=d.topics.filter(x=>!used.has(x.id));check(pool.length,'No unused topics remain.');t.topic=clone(randomPick(pool));s.live=drawScene(s,t,pool,'topic');
+  }else if(['undo_participant','undo_topic','undo_complete','select_participant'].includes(action)){
+    check(data.confirm===true,'Confirm this contest change.');check(!d.published,'Published divisions cannot be changed.');
+    const pause=turn=>{if(turn?.timer.running)Object.assign(turn.timer,{remaining:remaining(turn.timer),running:false,endsAt:null});};
+    if(action==='undo_participant'||action==='undo_topic'){
+      check(t&&t.division===div&&data.turnId===t.id,'The active participant changed.',409);pause(t);
+      if(action==='undo_participant'){
+        t.status='cancelled';t.cancelledAt=timestamp();s.active=null;s.live={id:uid(),scene:'standby',division:div,label:d.label};
+      }else{
+        check(t.topic,'There is no topic draw to undo.');check(!Object.keys(t.scores).length,'Scores already exist for this topic. Undo the participant draw to start a new attempt while preserving the old record.');
+        t.topic=null;t.timer={phase:'preparation',duration:s.settings.prepSeconds,remaining:s.settings.prepSeconds,running:false,endsAt:null};s.live=scene(s,{scene:'contestant',division:div,turnId:t.id});
+      }
+    }else{
+      let target;
+      if(action==='undo_complete'){
+        target=s.turns.find(turn=>turn.id===data.turnId&&turn.division===div&&turn.status==='complete');check(target,'That completed speech is no longer available.',409);
+      }else{
+        check(d.confirmed,'Confirm this division’s roster and panel first.');const p=d.participants.find(p=>p.id===data.participantId);check(p,'Choose a participant in this division.');
+        target=s.turns.find(turn=>turn.division===div&&turn.participantId===p.id&&turn.status!=='cancelled');
+        if(!target){target={id:uid(),division:div,participantId:p.id,topic:null,scores:{},panel:panel(s,div).map(j=>j.id),status:'active',drawnAt:timestamp(),timer:{phase:'preparation',duration:s.settings.prepSeconds,remaining:s.settings.prepSeconds,running:false,endsAt:null}};s.turns.push(target);}
+      }
+      if(t&&t.id!==target.id){pause(t);t.status='paused';}
+      pause(target);target.status='active';delete target.completedAt;s.active=target.id;s.division=div;s.live=scene(s,{scene:'contestant',division:div,turnId:target.id});
+    }
   }else if(action==='timer'){
     check(t&&t.topic,'Draw the topic before operating the timer.');check(data.turnId===t.id,'The active participant changed.',409);const timer=t.timer,op=data.operation;
     if(op==='phase'){
@@ -137,7 +160,7 @@ export function apply(s,action,data,seed){
     else throw new Problem('Unknown timer operation.');
   }else if(action==='score'){
     const target=s.turns.find(turn=>turn.id===data.turnId);
-    check(target&&target.topic&&!s.divisions[target.division].published,'This participant is no longer accepting scores.',409);check(target.panel.includes(data.judgeId),'This judge is not on this participant’s panel.');check(!Object.hasOwn(target.scores,data.judgeId),'This judge’s score is already submitted and locked.',409);
+    check(target&&target.status!=='cancelled'&&target.topic&&!s.divisions[target.division].published,'This participant is no longer accepting scores.',409);check(target.panel.includes(data.judgeId),'This judge is not on this participant’s panel.');check(!Object.hasOwn(target.scores,data.judgeId),'This judge’s score is already submitted and locked.',409);
     const values=data.values;check(Array.isArray(values)&&values.length===10&&values.every(v=>typeof v==='number'&&[.25,.5,.75,1].includes(v)),'Select 0.25, 0.50, 0.75 or 1.00 for each of the ten criteria.');
     check(data.confirmIdentity===data.judgeId,'Confirm the selected judging identity before submitting.');
     target.scores[data.judgeId]={values:[...values],note:text(data.note||'',1000,'Notes',true),at:timestamp()};

@@ -146,3 +146,23 @@ test('large uploaded logos are rejected and a reset retry archives only once',as
   const {service}=await context();await assert.rejects(command(service,'settings',{settings:{logo:'data:image/png;base64,'+'A'.repeat(50000)}}),{status:422});
   const reset=await payload(service,'reset',{confirm:'RESET TEST26'});await service.command('TEST26',reset);await service.command('TEST26',reset);const s=await service.read('TEST26');assert.equal(s.archives.length,1);assert.equal(Object.keys(s.receipts).length,1);
 });
+
+
+test('undo participant retains history and releases its participant and topic',async()=>{
+ const {service}=await context(),t=await draw(service);await command(service,'score',score(t,'one'));
+ await command(service,'undo_participant',{turnId:t.id,confirm:true});let s=await service.read('TEST26');assert.equal(s.active,null);assert.equal(s.turns[0].status,'cancelled');assert.equal(s.turns[0].scores.one.values[0],1);assert.equal(project(s,'judge','one').queue.length,0);
+ await assert.rejects(command(service,'score',score(t,'two')),{status:409});
+ await command(service,'select_participant',{participantId:t.participantId,confirm:true});s=await service.read('TEST26');assert.notEqual(s.active,t.id);assert.deepEqual(active(s).scores,{});
+});
+test('undo topic clears its reveal and prevents reassignment of existing scores',async()=>{
+ const {service}=await context(),t=await draw(service);await command(service,'undo_topic',{turnId:t.id,confirm:true});let s=await service.read('TEST26');assert.equal(active(s).topic,null);assert.ok(!JSON.stringify(project(s,'audience')).includes(t.topic.text));
+ await command(service,'draw_topic',{turnId:t.id});await command(service,'score',score(t,'one'));await assert.rejects(command(service,'undo_topic',{turnId:t.id,confirm:true}),{status:422});
+});
+test('undo completion and contestant selection preserve separate topics and scores',async()=>{
+ const {service}=await context(),first=await draw(service);await complete(service,first);await command(service,'draw_participant');const second=active(await service.read('TEST26'));await command(service,'draw_topic',{turnId:second.id});
+ await command(service,'undo_complete',{turnId:first.id,confirm:true});let s=await service.read('TEST26');assert.equal(s.active,first.id);assert.equal(s.turns.find(x=>x.id===second.id).status,'paused');assert.equal(active(s).scores.one.values[0],1);assert.equal(active(s).topic.id,first.topic.id);
+ await command(service,'select_participant',{participantId:second.participantId,confirm:true});s=await service.read('TEST26');assert.equal(s.active,second.id);assert.deepEqual(active(s).scores,{});assert.equal(s.turns.find(x=>x.id===first.id).scores.one.values[0],1);
+});
+test('undo requires confirmation and rejects stale controls',async()=>{
+ const {service}=await context(),t=await draw(service);await assert.rejects(command(service,'undo_participant',{turnId:t.id}),{status:422});const old=await payload(service,'undo_participant',{turnId:t.id,confirm:true});await command(service,'timer',{operation:'start',turnId:t.id});await assert.rejects(service.command('TEST26',old),{status:409});assert.equal((await service.read('TEST26')).active,t.id);
+});

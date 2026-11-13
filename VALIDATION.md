@@ -1,5 +1,10 @@
 # Verification record
 
+## Undo and contestant selection
+
+Verified on 13 November 2026. All 35 tests pass, including undo history, participant/topic pool restoration, completion reopening, separate score ownership across contestant switches, confirmation and stale-update rejection. TypeScript and production build passed. Browser checks used synthetic local participants; the live event was not changed during testing.
+
+
 ## Animated draw and judging update
 
 Verified on 13 November 2026, America/Bogota.

@@ -87,7 +87,7 @@ async function sendPending() {
     const savedAction=pending.action;
     const data = await request(`command?code=${encodeURIComponent(code)}`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(pending)});
     persistPending(null); accept(data);
-    if(['draw_participant','draw_topic'].includes(savedAction)){draft={scene:'contestant',division:selectedDivision,message:'',followLive:true};saveLocal(`davinci-draft-${state.generation}`,JSON.stringify(draft));}
+    if(['draw_participant','draw_topic','undo_participant','undo_topic','undo_complete','select_participant'].includes(savedAction)){draft={scene:'contestant',division:selectedDivision,message:'',followLive:true};saveLocal(`davinci-draft-${state.generation}`,JSON.stringify(draft));}
     if(savedAction==='score')judgeTurnId='';
     editing = false; render(true); toast('Saved to the event.');
   } catch (e) {
@@ -138,11 +138,12 @@ function control() {
   const completed = state.turns.filter(x => x.division === selectedDivision && x.status === 'complete').length;
   const p = t && participant(t);
   const ready = d.confirmed && completed < d.participants.length;
+  const lastComplete=[...state.turns].reverse().find(row=>row.division===selectedDivision&&row.status==='complete');
   const wheelBusy=!!state.live?.wheel&&now()<state.live.wheel.finishAt;
   const missing=state.turns.filter(x=>x.division===selectedDivision&&x.status==='complete'&&x.panel.some(id=>!Object.hasOwn(x.scores,id))).length;
   return `${title('Contest control','Draw, prepare and guide each speech.')}${divisionTabs()}
     ${!d.confirmed ? `<div class="notice">Review participant names and the judging panel before the first draw. ${button('Review setup','tab',{tab:'setup'})}</div>` : ''}${missing?`<div class="notice">${missing} completed speech${missing===1?' is':'es are'} still awaiting judge scores. You can continue drawing participants.</div>`:''}
-    <div class="grid"><div><section class="card"><div class="card-head"><h2>On the floor</h2><span class="chip">${completed} / ${d.participants.length} completed</span></div>
+    <section class="card"><h2>Contestant controls</h2><form id="contestant-form"><label>Choose current contestant<select name="participantId">${d.participants.map(row=>{const attempt=state.turns.find(x=>x.participantId===row.id&&x.status!=='cancelled');return `<option value="${esc(row.id)}" ${t?.participantId===row.id?'selected':''}>${esc(row.name)} · ${attempt?.status||'Not drawn'}</option>`;}).join('')}</select></label><button type="submit" ${d.published?'disabled':''}>Change contestant</button></form><div class="row" style="margin-top:14px">${button('Undo participant draw','undo-participant',{},'danger',!t||!!d.published)}${button('Undo topic draw','undo-topic',{},'',!t?.topic||!!d.published)}${button('Undo last completion','undo-complete',{turn:lastComplete?.id||''},'',!lastComplete||!!d.published)}</div><p class="smalltext muted" style="margin:12px 0 0">Switching preserves each contestant’s topic and scores. Undoing a participant draw retains the cancelled attempt in history.</p></section><div class="grid"><div><section class="card"><div class="card-head"><h2>On the floor</h2><span class="chip">${completed} / ${d.participants.length} completed</span></div>
       ${t ? `<div class="eyebrow">DIVISION ${t.division} · ${esc(p.group)}</div><div class="hero-name">${esc(p.name)}</div><small>${esc(p.fullName)}</small>
       <hr class="sep">${t.topic ? `<div class="eyebrow">DRAWN TOPIC</div><p class="topic">${esc(t.topic.text)}</p>` : `<p class="muted">The participant is drawn. Select their topic next.</p>${button('Draw topic','draw-topic',{'wheel-wait':'true'},'primary',wheelBusy)}`}` : `<div class="empty"><span class="symbol">◎</span>${completed === d.participants.length ? 'All speeches in this division are complete.' : 'Ready for the next participant.'}</div>${button('Draw participant','draw-participant',{},'primary',!ready)}`}
     </section>${t ? `<section class="card"><div class="card-head"><h2>Contest timer</h2><span class="chip">${esc(t.timer.phase)}</span></div><div class="row">${button('Preparation','phase',{phase:'preparation'},t.timer.phase === 'preparation' ? 'selected' : '',t.timer.running || !t.topic)}${button('Speech','phase',{phase:'speech'},t.timer.phase === 'speech' ? 'selected' : '',t.timer.running || !t.topic)}</div><div class="timer-box"><div>${phaseClock(t.timer)}<div class="timer-label">${t.timer.phase === 'speech' ? 'Green at 2:00 elapsed · limit 3:00' : 'One minute to prepare'}</div></div><div class="timer-controls">${button(t.timer.running ? 'Pause' : 'Start','timer',{operation:t.timer.running ? 'pause' : 'start'},'primary',!t.topic)}${button('Reset','timer-reset',{},'',!t.topic)}</div></div><small>The timer continues on all connected screens. Expiry does not submit scores.</small></section>` : ''}
@@ -206,7 +207,7 @@ function results() {
   const d = state.divisions[selectedDivision], rows = state.standings[selectedDivision];
   const ties = rows.some((r,i)=>i&&r.average===rows[i-1].average);
   return `${title('Scores & awards','Review all judge submissions before publishing.')}${divisionTabs()}<div class="row" style="margin-bottom:20px">${button('Export event JSON','export-json')}${button('Export score CSV','export-csv')}</div>${ties?'<div class="notice">There is a tied average. Tied participants share a place; no automatic tiebreak rule was supplied. Review before publishing awards.</div>':''}<section class="card"><div class="card-head"><h2>Division ${selectedDivision}</h2><span class="chip ${d.published?'live':''}">${d.published?'PUBLISHED':'UNPUBLISHED'}</span></div><div class="scroll"><table><thead><tr><th>Place</th><th>Participant</th>${panel(selectedDivision).map(j=>`<th>${esc(j.name)}</th>`).join('')}<th>Average / 10</th></tr></thead><tbody>${d.participants.map(p=>{
-    const t=state.turns.find(t=>t.participantId===p.id&&t.division===selectedDivision); const rank=rows.find(r=>r.participantId===p.id);
+    const t=state.turns.find(t=>t.participantId===p.id&&t.division===selectedDivision&&t.status!=='cancelled'); const rank=rows.find(r=>r.participantId===p.id);
     return `<tr><td>${rank?.rank||'—'}</td><td><strong>${esc(p.name)}</strong><small>${t?.status==='complete'?(rank?'Scored':'Speech complete · awaiting scores'):t?'In progress':'Not drawn'}</small></td>${panel(selectedDivision).map(j=>`<td>${t?.scores[j.id]?t.scores[j.id].values.reduce((a,b)=>a+b,0).toFixed(2):'—'}</td>`).join('')}<td class="admin-results">${rank?rank.average.toFixed(2):'—'}</td></tr>`;
   }).join('')}</tbody></table></div><hr class="sep"><p class="smalltext muted">Publishing makes an immutable result snapshot available for leaderboard and awards scenes. You still choose when to take those scenes live.</p>${button(d.published?'Results published':`Publish Division ${selectedDivision} results`,'publish',{},'primary',!!d.published||rows.length!==d.participants.length)}</section><section class="card"><h2>Submitted score sheets</h2>${state.turns.filter(t=>t.division===selectedDivision&&Object.keys(t.scores).length).map(t=>`<details style="margin-bottom:14px"><summary>${esc(participant(t).name)} · ${Object.keys(t.scores).length} score sheets</summary>${Object.entries(t.scores).map(([id,score])=>`<p><strong>${esc(state.judges.find(j=>j.id===id)?.name)}</strong><br>${score.values.map((v,i)=>`${i+1}: ${v.toFixed(2)}`).join(' · ')}<br><small>${esc(score.note)}</small></p>`).join('')}</details>`).join('')||'<p class="muted">No submitted score sheets yet.</p>'}</section>`;
 }
@@ -327,10 +328,10 @@ async function exportEvent(csv=false, archiveId) {
   const data=await request(`${archiveId?'archive':'export'}?code=${encodeURIComponent(code)}${archiveId?'&id='+encodeURIComponent(archiveId):''}`);
   const base=`davinci-${code}-${archiveId?'archive-'+archiveId:new Date().toISOString().slice(0,10)}`;
   if(!csv)return download(base+'.json',JSON.stringify(data,null,2));
-  const rows=[['Division','Participant','Full name','Judge','Topic',...data.criteria.map(c=>c.name),'Total /10','Private notes']];
+  const rows=[['Division','Attempt status','Participant','Full name','Judge','Topic',...data.criteria.map(c=>c.name),'Total /10','Private notes']];
   for(const t of data.turns)for(const [id,score]of Object.entries(t.scores)){
     const p=data.divisions[t.division].participants.find(p=>p.id===t.participantId);
-    rows.push([t.division,p.name,p.fullName,data.judges.find(j=>j.id===id)?.name,t.topic?.text,...score.values,score.values.reduce((a,b)=>a+b,0),score.note]);
+    rows.push([t.division,t.status,p.name,p.fullName,data.judges.find(j=>j.id===id)?.name,t.topic?.text,...score.values,score.values.reduce((a,b)=>a+b,0),score.note]);
   }
   const cell=v=>`"${String(v??'').replace(/^[=+@-]/,"'$&").replace(/"/g,'""')}"`;
   download(base+'.csv','\uFEFF'+rows.map(r=>r.map(cell).join(',')).join('\r\n'),'text/csv;charset=utf-8');
@@ -349,6 +350,9 @@ async function clickAction(target) {
   if(action==='phase')return mutate('timer',{operation:'phase',phase:target.dataset.phase,turnId:t.id});
   if(action==='timer')return mutate('timer',{operation:target.dataset.operation,turnId:t.id});
   if(action==='timer-reset')return confirmDialog('Reset this timer?','This sets the current phase back to its full duration.','',()=>mutate('timer',{operation:'reset',confirm:true,turnId:t.id}));
+  if(action==='undo-participant')return confirmDialog('Undo participant draw?','This cancels the current attempt, returns the participant and topic to their pools, and retains its scores in history.','',()=>mutate('undo_participant',{division:selectedDivision,turnId:t.id,confirm:true}));
+  if(action==='undo-topic')return confirmDialog('Undo topic draw?','The topic will return to its pool. This is available before any judge has submitted a score.','',()=>mutate('undo_topic',{division:selectedDivision,turnId:t.id,confirm:true}));
+  if(action==='undo-complete')return confirmDialog('Undo last completion?','Reopen this division’s last completed speech, preserving its topic and scores. Any other current contestant will be paused.','',()=>mutate('undo_complete',{division:selectedDivision,turnId:target.dataset.turn,confirm:true}));
   if(action==='complete')return mutate('complete',{turnId:t.id});
   if(action==='take-live')return mutate('take_live',{...draft,division:selectedDivision,turnId:document.querySelector('#preview .stage')?.dataset.turn||null});
   if(action==='publish')return confirmDialog('Publish division results',`Publish the reviewed Division ${selectedDivision} result snapshot. It can then be shown on the audience display.`,`PUBLISH ${selectedDivision}`,confirm=>mutate('publish',{division:selectedDivision,confirm}));
@@ -406,6 +410,7 @@ async function submitForm(form) {
     code=String(f.get('code')).toUpperCase();const data=await request('initialize',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code})});
     saveLocal('davinci-code',code);accept(data);editing=false;render(true);return;
   }
+  if(form.id==='contestant-form')return confirmDialog('Change current contestant?','The selected contestant becomes current. Existing topics and scores stay with their original contestant; the other attempt can be resumed later.','',()=>mutate('select_participant',{division:selectedDivision,participantId:String(f.get('participantId')),confirm:true}));
   if(form.id==='roster-form')return mutate('roster',{division:selectedDivision,participants:rows().map(r=>{const [name,fullName,group]=r.split('|').map(s=>s.trim());return{name,fullName:fullName||name,group:group||''};})});
   if(form.id==='topics-form')return mutate('topics',{division:selectedDivision,topics:rows()});
   if(form.id==='judges-form')return mutate('judges',{judges:rows().map(r=>{const [id,name,description,divs]=r.split('|').map(s=>s.trim());return{id,name,description:description||'',divisions:(divs||'').split(',').map(s=>s.trim().toUpperCase()).filter(Boolean)};})});
