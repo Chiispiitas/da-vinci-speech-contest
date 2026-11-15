@@ -45,3 +45,11 @@ Advisory: https://github.com/advisories/GHSA-mrhx-c7xc-m3w5
 - Checked all scenes in 300, 400 and 1100 pixel-wide previews. All 56 final full-screen/preview combinations at 720p passed the geometry and content-fit checks before publication.
 - Verified both prepared wheel previews remain stationary until Take live. All 35 contest tests pass; frontend JavaScript syntax check passes.
 - Test contest and layout fixtures were local and synthetic. No production contest draws, scores, scene changes or resets were performed during this review. The temporary layout fixture is excluded from the published frontend.
+
+
+## Whole competition reset — 15 November 2026
+
+- Added a clearly labeled Reset whole competition button on Contest control and aligned the Settings label and confirmation text.
+- Reuses the server reset: archive the current snapshot, restore original rosters/topics/panels across A/B/C, clear turns/live/pending wheels/publications, rotate event generation, keep event code and school settings.
+- All 36 tests pass, including a new scenario with published Division A results, a completed Division B speech and an active scored Division C speech. Verified original division data, empty judge queues, retained settings and archived practice data.
+- Exercised draw → reset confirmation → reset in the local synthetic event. The preview returns to standby and all divisions require roster/panel review again. No production reset was performed.

@@ -164,3 +164,35 @@ test('undo completion and contestant selection preserve separate topics and scor
 test('undo requires confirmation and rejects stale controls',async()=>{
  const {service}=await context(),t=await draw(service);await assert.rejects(command(service,'undo_participant',{turnId:t.id}),{status:422});const old=await payload(service,'undo_participant',{turnId:t.id,confirm:true});await command(service,'timer',{operation:'start',turnId:t.id});await assert.rejects(service.command('TEST26',old),{status:409});assert.equal((await service.read('TEST26')).active,t.id);
 });
+
+
+test('whole competition reset restores all divisions after published, completed and active practice speeches',async()=>{
+  const {service,repo}=await context();
+  await command(service,'settings',{settings:{accent:'#112233'}});
+  await complete(service,await draw(service));
+  await command(service,'draw_participant');
+  let second=active(await service.read('TEST26'));
+  await command(service,'draw_topic',{turnId:second.id});
+  await complete(service,active(await service.read('TEST26')));
+  await command(service,'publish',{confirm:'PUBLISH A'});
+  await command(service,'division',{division:'B'});
+  await complete(service,await draw(service));
+  await command(service,'division',{division:'C'});
+  const current=await draw(service);
+  await command(service,'score',score(current,'one'));
+  const before=await service.read('TEST26');
+  await command(service,'reset',{confirm:'RESET TEST26'});
+  const after=await service.read('TEST26'),seed=fixture();
+  assert.equal(after.code,'TEST26');assert.equal(after.division,'A');
+  assert.equal(after.active,null);assert.equal(after.live,null);assert.equal(after.pendingWheel,undefined);
+  assert.deepEqual(after.turns,[]);assert.deepEqual(after.settings,before.settings);
+  assert.deepEqual(after.judges,seed.judges);
+  for(const division of ['A','B','C']){
+    assert.deepEqual(after.divisions[division],{...seed.divisions[division],confirmed:false,published:null});
+    assert.deepEqual(project(after,'admin').standings[division],[]);
+  }
+  assert.deepEqual(project(after,'judge','one').queue,[]);
+  const archived=await repo.revision(Number(after.archives.at(-1).id));
+  assert.ok(archived.divisions.A.published);assert.equal(archived.turns.length,4);
+  assert.equal(archived.active,current.id);
+});
