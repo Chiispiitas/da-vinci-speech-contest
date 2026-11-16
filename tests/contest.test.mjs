@@ -119,7 +119,7 @@ test('completing a speech while a judge submits preserves both changes',async()=
 test('judge projection includes only that judge’s own submitted score',async()=>{
   const {service}=await context(),t=await draw(service);await command(service,'score',score(t,'one'));const s=await service.read('TEST26');assert.ok(project(s,'judge','one').current.myScore);assert.equal(project(s,'judge','two').current.myScore,null);assert.ok(!JSON.stringify(project(s,'judge','two')).includes('Private judge note'));
 });
-test('unpublished leaderboards cannot be taken live and publish needs full scoring and explicit confirmation',async()=>{
+test('unpublished podium results cannot be taken live and publish needs full scoring and explicit confirmation',async()=>{
   const {service}=await context();await assert.rejects(command(service,'take_live',{scene:'awards'}),{status:422});await assert.rejects(command(service,'publish',{confirm:'PUBLISH A'}),{status:422});await assert.rejects(command(service,'publish'),{status:422});
 });
 test('ties share places and published results are frozen',async()=>{
@@ -195,4 +195,53 @@ test('whole competition reset restores all divisions after published, completed 
   const archived=await repo.revision(Number(after.archives.at(-1).id));
   assert.ok(archived.divisions.A.published);assert.equal(archived.turns.length,4);
   assert.equal(archived.active,current.id);
+});
+
+
+const specialPanel=[{id:'special-one',name:'Special Judge One',description:'Special awards',divisions:['A']},{id:'special-two',name:'Special Judge Two',description:'Special awards',divisions:['A']}];
+async function specialContext(){
+ const c=await context();await command(c.service,'special_panel',{judges:specialPanel});
+ await complete(c.service,await draw(c.service));await command(c.service,'draw_participant');
+ const t=active(await c.service.read('TEST26'));await command(c.service,'draw_topic',{turnId:t.id});await complete(c.service,active(await c.service.read('TEST26')));return c;
+}
+const ballot=(judgeId,participantId)=>({division:'A',judgeId,confirmIdentity:judgeId,choices:{pronunciation:participantId,creative:participantId,presence:participantId}});
+test('standby date is customizable and invalid calendar dates are rejected',async()=>{
+ const {service}=await context();await command(service,'settings',{settings:{eventDate:'2026-12-04'}});assert.equal(project(await service.read('TEST26'),'audience').settings.eventDate,'2026-12-04');
+ for(const date of ['2026-02-30','2026-13-01','tomorrow'])await assert.rejects(command(service,'settings',{settings:{eventDate:date}}),{status:422});
+});
+test('special-award panel is separate and votes validate identity, eligibility and all three awards',async()=>{
+ const {service}=await context();await command(service,'special_panel',{judges:specialPanel});
+ await assert.rejects(command(service,'special_vote',ballot('special-one','A1')),{status:422});
+ assert.equal((await service.read('TEST26')).judges[0].id,'one');
+ const ready=await specialContext();await assert.rejects(command(ready.service,'special_vote',ballot('one','A1')),{status:422});
+ await assert.rejects(command(ready.service,'special_vote',{...ballot('special-one','A1'),choices:{pronunciation:'A1'}}),{status:422});
+ await assert.rejects(command(ready.service,'special_vote',ballot('special-one','B1')),{status:422});
+ await assert.rejects(command(ready.service,'special_vote',{...ballot('special-one','A1'),confirmIdentity:'other'}),{status:422});
+});
+test('special-award ballots merge concurrently, retry safely, remain private and lock after submission',async()=>{
+ const {service}=await specialContext(),a=await payload(service,'special_vote',ballot('special-one','A1')),b=await payload(service,'special_vote',ballot('special-two','A1'));
+ await Promise.all([service.command('TEST26',a),service.command('TEST26',b)]);await service.command('TEST26',a);
+ const s=await service.read('TEST26');assert.equal(Object.keys(s.specialAwards.divisions.A.votes).length,2);
+ await assert.rejects(command(service,'special_vote',ballot('special-one','A2')),{status:409});
+ await assert.rejects(command(service,'special_panel',{judges:[specialPanel[0]]}),{status:422});
+ const judge=project(s,'specialjudge','special-one');assert.ok(judge.divisions.A.myVote);assert.ok(!JSON.stringify(judge).includes('special-two"'+':{'));
+ assert.equal(judge.divisions.A.published,null);assert.ok(!JSON.stringify(project(s,'audience')).includes('pronunciation'));
+ await command(service,'special_publish',{division:'A',confirm:'PUBLISH SPECIAL A'});
+ let publicState=project(await service.read('TEST26'),'audience');assert.equal(publicState.live,null);
+ await command(service,'take_live',{division:'A',scene:'special_awards'});publicState=project(await service.read('TEST26'),'audience');assert.equal(publicState.live.specialAwards.pronunciation.name,'First A');
+});
+test('special-award publication waits for all ballots and explicit panel resolution of tied votes',async()=>{
+ const {service}=await specialContext();await command(service,'special_vote',ballot('special-one','A1'));
+ await assert.rejects(command(service,'special_publish',{confirm:'PUBLISH SPECIAL A'}),{status:422});
+ await command(service,'special_vote',ballot('special-two','A2'));
+ await assert.rejects(command(service,'special_publish',{confirm:'PUBLISH SPECIAL A'}),{status:422});
+ await assert.rejects(command(service,'special_publish',{confirm:'PUBLISH SPECIAL A',winners:{pronunciation:'B1',creative:'A1',presence:'A2'}}),{status:422});
+ await command(service,'special_publish',{confirm:'PUBLISH SPECIAL A',winners:{pronunciation:'A1',creative:'A2',presence:'A1'}});
+ assert.equal((await service.read('TEST26')).specialAwards.divisions.A.published.winners.creative.name,'Second A');
+ await command(service,'reset',{confirm:'RESET TEST26'});const s=await service.read('TEST26');assert.equal(project(s,'admin').specialAwards.panel.length,0);assert.equal(project(s,'admin').specialAwards.divisions.A.published,null);
+});
+test('legacy public leaderboards become podiums and standby omits division metadata',async()=>{
+ const {service}=await context(),s=await service.read('TEST26');s.live={scene:'leaderboard',results:[1,2,3,4].map(rank=>({rank,name:'Place '+rank}))};
+ let a=audience(s);assert.equal(a.live.scene,'awards');assert.equal(a.live.results.length,3);
+ s.live={scene:'standby',division:'C',label:'Long division label'};a=audience(s);assert.equal(a.live.division,undefined);assert.equal(a.live.label,undefined);
 });

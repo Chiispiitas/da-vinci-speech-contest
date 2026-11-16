@@ -1,3 +1,4 @@
+import {applySpecial,specialState,specialTally,specialProjection} from './special-awards.mjs';
 // Pure contest rules; shared by the Wix endpoint and the concurrency test suite.
 export class Problem extends Error { constructor(message, status=422){super(message);this.status=status;} }
 export const check=(condition,message,status=422)=>{if(!condition)throw new Problem(message,status);};
@@ -6,7 +7,7 @@ export const timestamp=()=>Date.now()/1000;
 const uid=()=>crypto.randomUUID();
 export function text(value,max,label='Text',empty=false){check(typeof value==='string',`${label} must be text.`);value=value.trim();check((empty||value)&&value.length<=max,`${label} needs 1–${max} characters.`);return value;}
 const number=(v,min,max,label)=>{check(Number.isInteger(v)&&v>=min&&v<=max,`${label} must be ${min}–${max}.`);return v;};
-export const SCENES=['standby','introduction','participants','contestant','participant_wheel','topic_wheel','participant_draw','topic_draw','preparation','speech','announcement','leaderboard','awards','closing'];
+export const SCENES=['standby','introduction','participants','contestant','participant_wheel','topic_wheel','participant_draw','topic_draw','preparation','speech','announcement','mechanics','certificates','awards','special_awards','closing'];
 export const panel=(s,d)=>s.judges.filter(j=>j.divisions.includes(d));
 export const active=s=>s.turns.find(t=>t.id===s.active);
 export const participant=(s,t)=>s.divisions[t.division].participants.find(p=>p.id===t.participantId);
@@ -57,15 +58,19 @@ export function scene(s,data){
     else if(name!=='participant_draw'){check(t.topic,'Draw the topic first.');cue.topic=t.topic.text;}
     if(['preparation','speech'].includes(name)){check(t.timer.phase===name,'Select the matching timer phase first.');cue.timer=clone(t.timer);}
   }
-  if(['leaderboard','awards'].includes(name)){
-    check(d.published,'Publish the reviewed results first.');cue.results=clone(d.published.rows);cue.publishedAt=d.published.at;
+  if(name==='certificates')cue.participants=d.participants.map(({name,group})=>({name,group}));
+  if(name==='special_awards'){const published=specialState(s).divisions[div].published;check(published,'Publish the reviewed special awards first.');cue.specialAwards=clone(published.winners);}
+  if(name==='awards'){
+    check(d.published,'Publish the reviewed results first.');cue.results=clone(d.published.rows.filter(r=>r.rank<=3));cue.publishedAt=d.published.at;
     if(name==='awards')cue.results=cue.results.filter(r=>r.rank<=3);
   }
   return cue;
 }
 export function audience(s,at=timestamp()){
-  const settings=Object.fromEntries(['school','title','stageLogo','accent','highlight','transition','minimumSeconds','speechSeconds'].map(k=>[k,s.settings[k]]));
+  const settings=Object.fromEntries(['school','title','stageLogo','accent','highlight','transition','minimumSeconds','speechSeconds','prepSeconds','eventDate'].map(k=>[k,s.settings[k]??'']));
   const cue=visibleScene(s.live,at);
+  if(cue?.scene==='leaderboard'){cue.scene='awards';cue.results=(cue.results||[]).filter(r=>r.rank<=3);}
+  if(cue?.scene==='standby'){delete cue.division;delete cue.label;}
   if(cue&&['preparation','speech'].includes(cue.scene)){
     const t=s.turns.find(t=>t.id===cue.turnId);
     if(t?.timer.phase===cue.scene)cue.timer=clone(t.timer);
@@ -75,6 +80,7 @@ export function audience(s,at=timestamp()){
 export function project(s,role='admin',judgeId,turnId){
   if(role==='audience')return audience(s);
   const base={code:s.code,generation:s.generation,revision:s.revision,serverNow:timestamp(),settings:clone(s.settings)};
+  if(role==='specialjudge')return {...base,...specialProjection(s,judgeId)};
   if(role==='judge'){
     const eligible=s.turns.filter(t=>t.status!=='cancelled'&&t.panel.includes(judgeId)&&t.topic);
     const pending=eligible.filter(t=>!Object.hasOwn(t.scores,judgeId));
@@ -86,15 +92,16 @@ export function project(s,role='admin',judgeId,turnId){
   }
   if(role==='emcee'){
     const t=active(s);return {...base,division:s.division,current:t?{id:t.id,division:t.division,participant:clone(participant(s,t)),topic:clone(t.topic),timer:clone(t.timer),submitted:Object.keys(t.scores).length,expected:t.panel.length}:null,
-      live:audience(s).live,judges:clone(s.judges),divisions:Object.fromEntries(Object.entries(s.divisions).map(([k,d])=>[k,Object.fromEntries(['label','emcee','schedule','published'].map(f=>[f,clone(d[f])]))]))};
+      live:audience(s).live,judges:clone(s.judges),divisions:Object.fromEntries(Object.entries(s.divisions).map(([k,d])=>[k,{...Object.fromEntries(['label','emcee','schedule','published'].map(f=>[f,clone(d[f])])),specialAwards:clone(specialState(s).divisions[k].published)}]))};
   }
   check(role==='admin','Unknown role.',404);
-  const view=clone(s);delete view.receipts;
+  const view=clone(s);delete view.receipts;view.specialAwards=clone(specialState(s));view.specialTallies=Object.fromEntries(['A','B','C'].map(d=>[d,specialTally(s,d)]));
   return {...view,serverNow:timestamp(),standings:Object.fromEntries(['A','B','C'].map(d=>[d,standings(s,d)]))};
 }
 export function apply(s,action,data,seed){
   const div=data.division||s.division,d=s.divisions[div],t=active(s);check(d,'Choose Division A, B or C.');
   const started=key=>s.turns.some(t=>t.division===key);
+  if(action.startsWith('special_')){check(applySpecial(s,action,data),'Unknown special-award action.');return s;}
   if(action==='division'){check(!t,'Complete the current participant before changing divisions.');s.division=div;}
   else if(action==='confirm_panel'){check(!started(div),'Panel is fixed after the first draw.');check(panel(s,div).length>=2,'Assign at least two judges.');d.confirmed=true;}
   else if(action==='roster'){
@@ -179,9 +186,10 @@ export function apply(s,action,data,seed){
     check(rows.length===d.participants.length&&rows.length,'Every participant needs all panel scores before publication.');check(!d.published,'Results are already published.',409);d.published={at:timestamp(),rows};
   }else if(action==='settings'){
     const settings=data.settings;check(settings&&typeof settings==='object'&&!Array.isArray(settings),'Settings must be an object.');
-    const allowed=['title','logo','stageLogo','accent','highlight','transition','prepSeconds','speechSeconds','minimumSeconds'];check(Object.keys(settings).every(k=>allowed.includes(k)),'Unknown setting.');
+    const allowed=['title','logo','stageLogo','accent','highlight','transition','prepSeconds','speechSeconds','minimumSeconds','eventDate'];check(Object.keys(settings).every(k=>allowed.includes(k)),'Unknown setting.');
     for(const[k,v]of Object.entries(settings)){
-      if(['prepSeconds','speechSeconds','minimumSeconds'].includes(k)){check(!s.turns.length,'Timing rules are fixed after the first draw.');s.settings[k]=number(v,1,3600,'Duration');}
+      if(k==='eventDate'){check(typeof v==='string'&&(v===''||(/^\d{4}-\d{2}-\d{2}$/.test(v)&&Number.isFinite(Date.parse(v+'T12:00:00Z'))&&new Date(v+'T12:00:00Z').toISOString().slice(0,10)===v)),'Choose a valid event date.');s.settings.eventDate=v;}
+      else if(['prepSeconds','speechSeconds','minimumSeconds'].includes(k)){check(!s.turns.length,'Timing rules are fixed after the first draw.');s.settings[k]=number(v,1,3600,'Duration');}
       else if(['accent','highlight'].includes(k)){check(typeof v==='string'&&/^#[0-9a-f]{6}$/i.test(v),'Choose a six-digit colour.');s.settings[k]=v;}
       else if(k==='transition'){check(['none','fade','logo'].includes(v),'Choose none, fade or logo.');s.settings[k]=v;}
       else{const v2=text(v,k==='title'?120:44000,k);if(k!=='title')check(['assets/logo-blue.svg','assets/logo-white.svg','assets/anniversary.png'].includes(v2)||/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(v2),'Use a bundled logo or upload a small PNG, JPEG or WebP.');s.settings[k]=v2;}
@@ -213,7 +221,7 @@ export class ContestService{
       const s=await this.read(code);
       if(Object.hasOwn(s.receipts,requestId)){check(s.receipts[requestId]===hash,'This request ID was already used for another action.',409);return s;}
       check(payload.generation===s.generation,'This is a different event. Reconnect before continuing.',409);
-      const mergeable=['score','complete'].includes(payload.action);
+      const mergeable=['score','special_vote','complete'].includes(payload.action);
       if(!mergeable)check(Number.isInteger(payload.revision)&&payload.revision===s.revision,'The event changed on another screen. Review the latest state and try again.',409);
       check(payload.data&&typeof payload.data==='object'&&!Array.isArray(payload.data),'Action data must be an object.');
       const seed=payload.action==='reset'?await this.repo.program():null;

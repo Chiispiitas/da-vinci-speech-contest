@@ -17,7 +17,7 @@ export const ALL:APIRoute=async({request,params,url})=>{
     if(request.method==='GET'){
       if(route==='session'){const state=await repository.latest();return response(state?{initialized:true,code:state.code}:{initialized:false});}
       const state=await service.read(code);
-      if(['admin','judge','emcee','audience'].includes(route||''))return response(project(state,route,url.searchParams.get('judge'),url.searchParams.get('turn')));
+      if(['admin','judge','specialjudge','emcee','audience'].includes(route||''))return response(project(state,route,url.searchParams.get('judge'),url.searchParams.get('turn')));
       if(route==='export')return response(project(state));
       if(route==='archives')return response(state.archives.map(({id,created}:any)=>({id,created})));
       if(route==='archive'){
@@ -31,7 +31,7 @@ export const ALL:APIRoute=async({request,params,url})=>{
       const raw=await request.text();check(raw.length<=600000,'Request is too large.',413);
       let payload;try{payload=JSON.parse(raw);}catch{throw new Problem('Invalid JSON.');}
       const state=route==='initialize'?await service.initialize(payload?.code):await service.command(code,payload);
-      return response(payload.action==='score'?project(state,'judge',payload.data.judgeId):project(state));
+      return response(payload.action==='score'?project(state,'judge',payload.data.judgeId):payload.action==='special_vote'?project(state,'specialjudge',payload.data.judgeId):project(state));
     }
     throw new Problem('Route not found.',404);
   }catch(error){

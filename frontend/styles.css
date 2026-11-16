@@ -59,3 +59,17 @@ input,select,textarea{min-width:0;max-width:100%}
 .preview .stage-body .stage-rows.results.results-grid{font-size:1.7cqw}
 
 .role-card b{margin-top:auto;padding-top:14px}
+
+.stage-date{font-size:clamp(20px,2.5cqw,42px);color:#c8d7ed;margin:18px 0}
+.preview .stage-date{font-size:3cqw;margin:1cqw 0}
+.mechanics-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px 44px;font-size:clamp(18px,2cqw,34px);text-align:left;line-height:1.5;width:90%;padding-left:30px}
+.mechanics-list li{padding-left:8px}.mechanics-list li::marker{color:var(--gold);font-weight:700}
+.preview .mechanics-list{font-size:2.2cqw;gap:1.4cqw 4cqw;padding-left:3cqw}.preview .mechanics-list li{padding-left:.3cqw}
+.podium{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));align-items:end;gap:20px;width:100%;max-width:1200px;margin-top:25px}
+.podium-names{font:clamp(20px,2.8cqw,46px)/1.3 Georgia,serif;padding:15px 10px;overflow-wrap:anywhere}
+.podium-names>div+div{margin-top:12px}.podium-step{background:#2159a6;border-top:5px solid #c4d0df;padding:25px;font-size:clamp(32px,5cqw,80px);color:white}.place-1 .podium-step{height:26vh;border-color:var(--gold);background:#9c791c}.place-2 .podium-step{height:20vh}.place-3 .podium-step{height:15vh;border-color:#c78e59}
+.preview .podium{gap:1.5cqw;margin-top:1cqw}.preview .podium-names{font-size:3cqw;padding:1cqw .5cqw}.preview .podium-step{font-size:4cqw;padding:1cqw;border-top-width:.5cqw}.preview .place-1 .podium-step{height:13cqw}.preview .place-2 .podium-step{height:10cqw}.preview .place-3 .podium-step{height:8cqw}
+.special-award-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:30px;width:100%;margin-top:30px}.special-award-list>div{padding:25px 16px;border-top:3px solid var(--gold)}.special-award-list small{color:var(--gold);font-size:clamp(16px,1.8cqw,30px)}.special-award-list h2{margin:20px 0 0;overflow-wrap:anywhere}
+.preview .special-award-list{gap:2cqw;margin-top:1cqw}.preview .special-award-list>div{padding:2cqw 1cqw;border-width:.3cqw}.preview .special-award-list small{font-size:2cqw}.preview .special-award-list h2{font-size:3cqw;margin:1cqw 0 0}
+.ceremony-controls{margin:18px 0}.ceremony-controls button{font-size:12px}.ceremony-controls h3{margin-bottom:10px}
+@media(max-width:650px){.mechanics-list{grid-template-columns:1fr;font-size:18px;gap:12px}.preview .mechanics-list{grid-template-columns:repeat(2,minmax(0,1fr));font-size:2.2cqw;gap:1.4cqw 4cqw}.podium{gap:8px}.podium-names{font-size:17px;padding:10px 2px}.podium-step{padding:16px 4px}.special-award-list{grid-template-columns:1fr;gap:14px;margin-top:15px}.special-award-list>div{padding:12px}.special-award-list h2{font-size:23px;margin-top:8px}.preview .special-award-list{grid-template-columns:repeat(3,minmax(0,1fr))}}

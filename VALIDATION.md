@@ -53,3 +53,14 @@ Advisory: https://github.com/advisories/GHSA-mrhx-c7xc-m3w5
 - Reuses the server reset: archive the current snapshot, restore original rosters/topics/panels across A/B/C, clear turns/live/pending wheels/publications, rotate event generation, keep event code and school settings.
 - All 36 tests pass, including a new scenario with published Division A results, a completed Division B speech and an active scored Division C speech. Verified original division data, empty judge queues, retained settings and archived practice data.
 - Exercised draw → reset confirmation → reset in the local synthetic event. The preview returns to standby and all divisions require roster/panel review again. No production reset was performed.
+
+
+## Ceremony and special awards — 16 November 2026
+
+- Added a validated editable standby date, removed separate school/division text from standby, and added a public mechanics scene. Logo assets and wheel behavior are unchanged.
+- Removed the audience leaderboard and added a podium layout for ranks 1–3. Old saved leaderboard scenes are projected as podiums and stripped of later ranks.
+- Added ceremony shortcuts in the requested order and aligned program/emcee cues.
+- Added a separate configurable special-award panel, direct ballot page, three required selections per assigned judge, locked ballots, private judge projections, Admin vote review/tie resolution, explicit publication, and a public winners scene.
+- All 41 tests pass, including date validation, invalid ballot/identity/participant rejection, concurrency/idempotent retry, duplicate rejection, panel locking, incomplete ballots, tied publication, privacy, legacy scenes, and reset compatibility. Type checking and the Wix backend build pass.
+- Local synthetic UI: changed the date through Settings; submitted and reviewed two distinct judge ballots; reviewed and published the winners in Admin; took mechanics/certificates/podium/special awards live. All five relevant scenes fit 1280×720 and 375×812 without horizontal overflow or content clipping. Verified the same scenes in the private Admin preview.
+- No production contest commands, scoring, draws, publication or reset were used in verification. Deployment preserves the existing persistent event; the special-award panel starts unassigned.

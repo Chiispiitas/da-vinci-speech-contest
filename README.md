@@ -67,3 +67,12 @@ Backend source is in `wix-backend/`. Install using its lockfile, provide the Wix
 Wix site ID: `f41bec76-7208-422c-a5a6-8134638a4eb5`. Public companion app ID: `ff359b56-6e79-46b4-ba79-0f65417f426b`.
 
 The original Spelling Bee supplied the useful private-preview / Take-live / audience-projection pattern. This app has its own repository, backend site and CMS collections. No Spelling Bee live data, accounts, camera code, or video infrastructure is used.
+
+
+### Standby, ceremony, and special awards
+
+Set **Settings → Standby date** for the date displayed alongside the contest title. An empty date uses the current date in Manta. Standby has no separate school-name or division text; the configured logo remains.
+
+Audience scene choices include **Contest mechanics**, **Certificates of participation**, **Podium**, and **Special awards**. There is no audience leaderboard. The podium shows places 1–3 (including existing shared ranks), never the remaining standings. Admin retains the full scoring review table. Ceremony shortcuts prepare scenes in this order: certificates → podium → special awards; use **Take live** for each.
+
+Under **Judging panel → Special-award judging panel**, enter the judges and their assigned divisions. This panel is separate from the speech-scoring panel and has direct `specialjudge.html` ballot links. After all speeches in a division are complete, each assigned judge selects one participant for best pronunciation, most creative, and best stage presence, reviews the selections, and submits one locked ballot. A participant can win more than one category. Judges see only their own submitted ballot. Admin reviews the counts in **Scores & awards**, resolves any tied category with the panel, and explicitly publishes the winners before showing their scene. Panel assignments lock for a division once its first ballot is submitted. Event JSON exports and reset archives include special-award data.
