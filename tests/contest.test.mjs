@@ -245,3 +245,20 @@ test('legacy public leaderboards become podiums and standby omits division metad
  let a=audience(s);assert.equal(a.live.scene,'awards');assert.equal(a.live.results.length,3);
  s.live={scene:'standby',division:'C',label:'Long division label'};a=audience(s);assert.equal(a.live.division,undefined);assert.equal(a.live.label,undefined);
 });
+
+
+test('selecting a wheel scene previews its full remaining pool before a draw exists',async()=>{
+ const {service}=await context();let s=await service.read('TEST26');
+ let cue=wheel.poolPreview(s,'A','participant');assert.deepEqual(cue.wheel.entries.map(p=>p.label),['First A','Second A']);
+ assert.equal(cue.wheel.pending,true);assert.equal(cue.wheel.previewOnly,true);assert.equal(cue.after,undefined);
+ assert.equal(wheel.rotation(cue.wheel,Date.now()/1000),0);assert.equal(wheel.resolve(cue,Date.now()/1000),cue);
+ const t=await draw(service);s=await service.read('TEST26');cue=wheel.poolPreview(s,'A','participant');assert.equal(cue.wheel.entries.length,1);assert.notEqual(cue.wheel.entries[0].id,t.participantId);
+ await command(service,'undo_participant',{turnId:t.id,confirm:true});s=await service.read('TEST26');assert.equal(wheel.poolPreview(s,'A','participant').wheel.entries.length,2);
+});
+test('pool previews expose numbered topic slots without future prompts and explicitly represent empty pools',async()=>{
+ const {service}=await context(),s=await service.read('TEST26');
+ const topics=wheel.poolPreview(s,'A','topic');assert.deepEqual(topics.wheel.entries.map(t=>t.label),['Topic 01','Topic 02']);assert.ok(!JSON.stringify(topics).includes('PRIVATE FUTURE TOPIC'));
+ s.turns=s.divisions.A.participants.map((p,i)=>({division:'A',participantId:p.id,topic:s.divisions.A.topics[i],status:'complete'}));
+ assert.equal(wheel.poolPreview(s,'A','participant').wheel,null);assert.equal(wheel.poolPreview(s,'A','topic').wheel,null);
+ assert.equal(wheel.poolPreview(s,'unknown','participant'),null);
+});

@@ -16,6 +16,17 @@
     const progress=Math.max(0,Math.min(1,(now-wheel.startedAt)/(wheel.endsAt-wheel.startedAt)));
     return (reduced?end:end*(1-Math.pow(1-progress,4)))*180/Math.PI;
   }
+  // A scene preview must be useful before a server-selected draw exists.
+  // This private pool has no selected result and can never start an animation.
+  function poolPreview(state,division,kind){
+    const d=state.divisions[division];if(!d||!['participant','topic'].includes(kind))return null;
+    const turns=state.turns.filter(t=>t.division===division&&t.status!=='cancelled');
+    const used=new Set(turns.map(t=>kind==='participant'?t.participantId:t.topic?.id).filter(Boolean));
+    const pool=(kind==='participant'?d.participants:d.topics).filter(row=>!used.has(row.id));
+    const entries=pool.map(row=>({id:row.id,label:kind==='participant'?row.name:`Topic ${String(d.topics.findIndex(topic=>topic.id===row.id)+1).padStart(2,'0')}`}));
+    return {id:`pool-${kind}-${division}`,scene:kind+'_wheel',division,label:d.label,
+      wheel:entries.length?{id:`pool-${kind}-${division}`,kind,entries,previewOnly:true,pending:true,selectedIndex:-1,startedAt:null,endsAt:null,finishAt:null}:null};
+  }
   function paint(canvas,wheel){
     const ctx=canvas.getContext('2d');if(!ctx)return;
     const size=1000,center=size/2,radius=474,n=wheel.entries.length;
@@ -32,5 +43,5 @@
     }
     ctx.beginPath();ctx.arc(center,center,radius,0,TAU);ctx.strokeStyle='#F2C94C';ctx.lineWidth=12;ctx.stroke();
   }
-  return {resolve,rotation,paint};
+  return {resolve,rotation,paint,poolPreview};
 });

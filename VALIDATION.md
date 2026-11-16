@@ -64,3 +64,12 @@ Advisory: https://github.com/advisories/GHSA-mrhx-c7xc-m3w5
 - All 41 tests pass, including date validation, invalid ballot/identity/participant rejection, concurrency/idempotent retry, duplicate rejection, panel locking, incomplete ballots, tied publication, privacy, legacy scenes, and reset compatibility. Type checking and the Wix backend build pass.
 - Local synthetic UI: changed the date through Settings; submitted and reviewed two distinct judge ballots; reviewed and published the winners in Admin; took mechanics/certificates/podium/special awards live. All five relevant scenes fit 1280×720 and 375×812 without horizontal overflow or content clipping. Verified the same scenes in the private Admin preview.
 - No production contest commands, scoring, draws, publication or reset were used in verification. Deployment preserves the existing persistent event; the special-award panel starts unassigned.
+
+
+## Missing wheel preview — 16 November 2026
+
+- Reproduced the reported symptom: selecting Participant wheel with eight available participants and no prepared draw produced a blank stage (zero canvases).
+- Wheel scene previews now display the remaining private participant pool or numbered topic slots before a draw exists. These previews have no selected result and remain stationary. Empty pools show a clear message.
+- Added the appropriate Draw participant/Draw topic action beside Take live. Take live stays disabled for a pool-only preview and becomes available after the server prepares the draw. Existing roster/panel and current-contestant requirements still apply.
+- All 43 tests pass, including pre-draw previews, exclusion of used participants/topics, cancelled-attempt restoration, empty pools, and future-topic privacy. Existing server-selected wheel timing and draw concurrency protections are unchanged.
+- Local synthetic UI reproduced the blank scene, verified the populated replacement and its disabled Take live control, prepared a real test draw, and displayed its named wheel on the connected audience screen after Take live. No production draw/reset/score commands were used.
